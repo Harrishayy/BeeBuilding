@@ -1,4 +1,5 @@
-export type AgentName = 'planner' | 'coder' | 'tester' | 'reviewer' | 'orchestrator';
+export type DefaultAgentName = 'planner' | 'coder' | 'tester' | 'reviewer' | 'orchestrator';
+export type AgentName = string;
 
 export type PipelineStage =
   | 'idle'
@@ -15,6 +16,46 @@ export type PipelineStage =
   | 'failed';
 
 export type AgentStatus = 'idle' | 'working' | 'done' | 'blocked' | 'error';
+
+export type AppPhase = 'settings' | 'task' | 'planning' | 'plan_review' | 'architecture' | 'execution';
+
+export type PlanningStatus = 'chatting' | 'generating_plan' | 'generating_architecture' | 'ready';
+
+export interface PlanningMessage {
+  role: 'user' | 'assistant';
+  content: string;
+  timestamp: number;
+}
+
+export interface PlanDocument {
+  title: string;
+  summary: string;
+  requirements: string[];
+  fileChanges: FileChange[];
+  risks: string[];
+  complexity: 'low' | 'medium' | 'high';
+}
+
+export interface FileChange {
+  path: string;
+  action: 'create' | 'modify' | 'delete';
+  description: string;
+}
+
+export interface AgentSpec {
+  id: string;
+  name: string;
+  role: string;
+  tools: string[];
+  model: string;
+  systemPrompt: string;
+}
+
+export interface AgentArchitecture {
+  agents: AgentSpec[];
+  executionOrder: string[][];
+  estimatedTime: string;
+}
 
 export interface TaskDefinition {
   id: string;

@@ -2,6 +2,7 @@ import EventEmitter from 'eventemitter3';
 import { log } from '../util/logger.js';
 import type {
   AgentName,
+  AgentSpec,
   AgentState,
   AgentStatus,
   ArtifactRef,
@@ -24,13 +25,14 @@ export type FSMEvent =
   | 'reviewComplete'
   | 'merged'
   | 'error'
-  | 'reset';
+  | 'reset'
+  | 'agentComplete';
 
 interface FSMEvents {
   stateChange: (snapshot: PipelineSnapshot) => void;
 }
 
-const AGENT_NAMES: AgentName[] = ['planner', 'coder', 'tester', 'reviewer', 'orchestrator'];
+const DEFAULT_AGENT_NAMES: string[] = ['planner', 'coder', 'tester', 'reviewer', 'orchestrator'];
 
 const TRANSITION_TABLE: Partial<
   Record<PipelineStage, Partial<Record<FSMEvent, PipelineStage>>>
@@ -70,18 +72,19 @@ function createDefaultAgentState(name: AgentName): AgentState {
 export class PipelineFSM extends EventEmitter<FSMEvents> {
   private stage: PipelineStage = 'idle';
   private task: TaskDefinition | null = null;
-  private agentStates: Record<AgentName, AgentState>;
+  private agentStates: Record<string, AgentState>;
   private currentGate: GatePendingInfo | null = null;
   private gateConfig: GateConfig | null = null;
   private sessionId: string = '';
   private startedAt: number | null = null;
   private errorMessage: string | null = null;
+  private dynamicAgentNames: string[] = DEFAULT_AGENT_NAMES;
 
   constructor() {
     super();
     this.agentStates = Object.fromEntries(
-      AGENT_NAMES.map((n) => [n, createDefaultAgentState(n)]),
-    ) as Record<AgentName, AgentState>;
+      DEFAULT_AGENT_NAMES.map((n) => [n, createDefaultAgentState(n)]),
+    );
     log.debug(TAG, 'FSM initialized in idle state');
   }
 
@@ -100,6 +103,14 @@ export class PipelineFSM extends EventEmitter<FSMEvents> {
     this.startedAt = Date.now();
     this.errorMessage = null;
     log.info(TAG, `Task set: "${task.title}" (id=${task.id})`);
+  }
+
+  setDynamicAgents(agents: AgentSpec[]): void {
+    this.dynamicAgentNames = agents.map((a) => a.id);
+    this.agentStates = Object.fromEntries(
+      this.dynamicAgentNames.map((n) => [n, createDefaultAgentState(n)]),
+    );
+    log.info(TAG, `Dynamic agents set: ${this.dynamicAgentNames.join(', ')}`);
   }
 
   transition(event: FSMEvent): void {
@@ -146,14 +157,17 @@ export class PipelineFSM extends EventEmitter<FSMEvents> {
     }
   }
 
+  setStage(stage: PipelineStage): void {
+    this.stage = stage;
+    this.emit('stateChange', this.getSnapshot());
+  }
+
   getSnapshot(): PipelineSnapshot {
     return {
       sessionId: this.sessionId,
       stage: this.stage,
       task: this.task,
-      agents: Object.fromEntries(
-        AGENT_NAMES.map((n) => [n, { ...this.agentStates[n] }]),
-      ) as Record<AgentName, AgentState>,
+      agents: { ...this.agentStates } as Record<AgentName, AgentState>,
       currentGate: this.currentGate ? { ...this.currentGate } : null,
       startedAt: this.startedAt,
       error: this.errorMessage,
@@ -174,11 +188,10 @@ export class PipelineFSM extends EventEmitter<FSMEvents> {
       progress: number;
     }>,
   ): void {
-    const current = this.agentStates[name];
-    if (!current) {
-      log.warn(TAG, `updateAgentState: unknown agent "${name}"`);
-      return;
+    if (!this.agentStates[name]) {
+      this.agentStates[name] = createDefaultAgentState(name);
     }
+    const current = this.agentStates[name];
     if (update.status !== undefined) current.status = update.status;
     if (update.currentTask !== undefined) current.currentTask = update.currentTask;
     if (update.outputChunks !== undefined) current.outputChunks = update.outputChunks;
@@ -207,9 +220,10 @@ export class PipelineFSM extends EventEmitter<FSMEvents> {
     this.currentGate = null;
     this.startedAt = null;
     this.errorMessage = null;
+    this.dynamicAgentNames = DEFAULT_AGENT_NAMES;
     this.agentStates = Object.fromEntries(
-      AGENT_NAMES.map((n) => [n, createDefaultAgentState(n)]),
-    ) as Record<AgentName, AgentState>;
+      DEFAULT_AGENT_NAMES.map((n) => [n, createDefaultAgentState(n)]),
+    );
     log.info(TAG, 'FSM reset to idle');
     this.emit('stateChange', this.getSnapshot());
   }

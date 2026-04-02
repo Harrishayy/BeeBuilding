@@ -8,17 +8,21 @@ export function usePipelineState(): void {
   const updateSnapshot = usePipelineStore((s) => s.updateSnapshot);
   const addTimelineEvent = usePipelineStore((s) => s.addTimelineEvent);
   const addAgentOutput = usePipelineStore((s) => s.addAgentOutput);
+  const addPlanningMessage = usePipelineStore((s) => s.addPlanningMessage);
+  const setPlanningStatus = usePipelineStore((s) => s.setPlanningStatus);
+  const setPlan = usePipelineStore((s) => s.setPlan);
+  const setArchitecture = usePipelineStore((s) => s.setArchitecture);
+  const setSettings = usePipelineStore((s) => s.setSettings);
+  const setPhase = usePipelineStore((s) => s.setPhase);
+  const setGithubIssues = usePipelineStore((s) => s.setGithubIssues);
+  const setPendingQuestions = usePipelineStore((s) => s.setPendingQuestions);
+  const addToast = usePipelineStore((s) => s.addToast);
 
   useEffect(() => {
     function handleMessage(event: MessageEvent) {
       try {
         const msg = event.data as ExtensionMessage;
-        if (!msg || typeof msg.type !== 'string') {
-          console.warn('[BeeBuilder] Received invalid message:', event.data);
-          return;
-        }
-
-        console.debug(`[BeeBuilder] Message received: ${msg.type}`);
+        if (!msg || typeof msg.type !== 'string') return;
 
         switch (msg.type) {
           case 'pipelineState':
@@ -35,26 +39,20 @@ export function usePipelineState(): void {
 
           case 'gatePending': {
             const snap = usePipelineStore.getState().snapshot;
-            if (snap) {
-              updateSnapshot({ ...snap, currentGate: msg.payload });
-            }
+            if (snap) updateSnapshot({ ...snap, currentGate: msg.payload });
             break;
           }
 
           case 'gateResolved': {
             const snap = usePipelineStore.getState().snapshot;
-            if (snap) {
-              updateSnapshot({ ...snap, currentGate: null });
-            }
+            if (snap) updateSnapshot({ ...snap, currentGate: null });
             break;
           }
 
           case 'error': {
-            console.error(`[BeeBuilder] Extension error: ${msg.payload.message} (recoverable: ${msg.payload.recoverable})`);
+            addToast(msg.payload.message, 'error', 6000);
             const snap = usePipelineStore.getState().snapshot;
-            if (snap) {
-              updateSnapshot({ ...snap, error: msg.payload.message });
-            }
+            if (snap) updateSnapshot({ ...snap, error: msg.payload.message });
             break;
           }
 
@@ -62,8 +60,54 @@ export function usePipelineState(): void {
             vscode.postMessage({ type: 'requestState' });
             break;
 
+          case 'settingsState':
+            setSettings(msg.payload);
+            break;
+
+          case 'planningMessage': {
+            addPlanningMessage(msg.payload);
+
+            if (msg.payload.role === 'assistant') {
+              try {
+                const jsonMatch = msg.payload.content.match(/\{[\s\S]*\}/);
+                if (jsonMatch) {
+                  const parsed = JSON.parse(jsonMatch[0]);
+                  if (parsed.status === 'questions' && Array.isArray(parsed.questions)) {
+                    setPendingQuestions(parsed.questions);
+                  }
+                }
+              } catch {
+                // not JSON
+              }
+            }
+            break;
+          }
+
+          case 'planReady':
+            setPlan(msg.payload);
+            setPhase('plan_review');
+            addToast('Plan generated! Review and approve.', 'success');
+            break;
+
+          case 'architectureReady':
+            setArchitecture(msg.payload);
+            setPhase('architecture');
+            addToast('Architecture determined! Review the agent setup.', 'success');
+            break;
+
+          case 'planningStatus':
+            setPlanningStatus(msg.payload.phase);
+            if (msg.payload.phase === 'chatting') {
+              setPhase('planning');
+            }
+            break;
+
+          case 'issuesList':
+            setGithubIssues(msg.payload);
+            break;
+
           default:
-            console.warn(`[BeeBuilder] Unknown message type: ${(msg as { type: string }).type}`);
+            break;
         }
       } catch (err) {
         console.error('[BeeBuilder] Error handling message:', err);
@@ -71,9 +115,9 @@ export function usePipelineState(): void {
     }
 
     window.addEventListener('message', handleMessage);
-    console.debug('[BeeBuilder] Message listener attached, requesting initial state');
     vscode.postMessage({ type: 'requestState' });
+    vscode.postMessage({ type: 'requestSettings' });
 
     return () => window.removeEventListener('message', handleMessage);
-  }, [vscode, updateSnapshot, addTimelineEvent, addAgentOutput]);
+  }, [vscode, updateSnapshot, addTimelineEvent, addAgentOutput, addPlanningMessage, setPlanningStatus, setPlan, setArchitecture, setSettings, setPhase, setGithubIssues, setPendingQuestions, addToast]);
 }

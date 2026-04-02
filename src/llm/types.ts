@@ -14,30 +14,8 @@ export interface ToolCall {
   input: Record<string, unknown>;
 }
 
-export interface LLMToolDefinition {
-  name: string;
-  description: string;
-  input_schema: {
-    type: 'object';
-    properties: Record<string, unknown>;
-    required: string[];
-  };
+export interface LLMResponse {
+  text: string;
+  toolCalls?: ToolCall[];
+  stopReason: 'end_turn' | 'tool_use' | 'max_tokens';
 }
-
-export interface StreamChatParams {
-  model: string;
-  systemPrompt: string;
-  messages: ChatMessage[];
-  tools?: LLMToolDefinition[];
-  maxTokens?: number;
-  onChunk: (text: string) => void;
-  onToolUse?: (toolName: string, input: Record<string, unknown>) => Promise<string>;
-}
-
-export const AVAILABLE_MODELS = [
-  'claude-opus-4-6',
-  'claude-sonnet-4-6',
-  'claude-haiku-3-5',
-] as const;
-
-export type ClaudeModel = (typeof AVAILABLE_MODELS)[number];

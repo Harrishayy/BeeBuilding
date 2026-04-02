@@ -5,6 +5,8 @@ import * as vscode from 'vscode';
 import EventEmitter from 'eventemitter3';
 import type {
   AgentName,
+  AgentArchitecture,
+  AgentSpec,
   GateConfig,
   GatePendingInfo,
   PipelineSnapshot,
@@ -92,7 +94,6 @@ export class AgentOrchestrator extends EventEmitter<OrchestratorEvents> {
   private paused = false;
   private aborted = false;
   private rejectionFeedback = '';
-
   private gateResolve: ((approved: boolean) => void) | null = null;
   private pauseResolve: (() => void) | null = null;
 
@@ -222,6 +223,25 @@ export class AgentOrchestrator extends EventEmitter<OrchestratorEvents> {
     this.runPipeline(task).catch((err: unknown) => {
       const message = err instanceof Error ? err.message : String(err);
       log.error(TAG, `Pipeline failed: ${message}`, err);
+      this.fsm.setError(message);
+      this.fsm.transition('error');
+      this.emitTimelineEvent('pipeline_failed', null, this.fsm.getStage(), message);
+      this.emit('error', { message, recoverable: false });
+    });
+  }
+
+  async submitTaskWithArchitecture(task: TaskDefinition, architecture: AgentArchitecture): Promise<void> {
+    log.info(TAG, `Dynamic task submitted: "${task.title}" with ${architecture.agents.length} agents`);
+
+    if (!this.sessionConfig) {
+      this.createSession();
+    }
+
+    this.fsm.setDynamicAgents(architecture.agents);
+
+    this.runDynamicPipeline(task, architecture).catch((err: unknown) => {
+      const message = err instanceof Error ? err.message : String(err);
+      log.error(TAG, `Dynamic pipeline failed: ${message}`, err);
       this.fsm.setError(message);
       this.fsm.transition('error');
       this.emitTimelineEvent('pipeline_failed', null, this.fsm.getStage(), message);
@@ -810,6 +830,125 @@ export class AgentOrchestrator extends EventEmitter<OrchestratorEvents> {
         log.warn(TAG, `Failed to clean up worktree for ${agent}`, err);
       }
     }
+  }
+
+  private async runDynamicPipeline(task: TaskDefinition, architecture: AgentArchitecture): Promise<void> {
+    log.info(TAG, `Starting dynamic pipeline for: "${task.title}" with ${architecture.agents.length} agents`);
+    await this.ensureClaudeClient();
+
+    this.fsm.setTask(task);
+    this.fsm.setStage('planning');
+    this.emitTimelineEvent('pipeline_started', null, 'planning', `Dynamic pipeline: ${task.title}`);
+
+    const agentMap = new Map(architecture.agents.map((a) => [a.id, a]));
+
+    for (let groupIdx = 0; groupIdx < architecture.executionOrder.length; groupIdx++) {
+      if (this.aborted) throw new Error('Pipeline aborted by user');
+
+      if (this.paused) {
+        await this.waitForResume();
+        if (this.aborted) throw new Error('Pipeline aborted by user');
+      }
+
+      const group = architecture.executionOrder[groupIdx];
+      const isParallel = group.length > 1;
+      log.info(TAG, `Execution group ${groupIdx + 1}/${architecture.executionOrder.length}: [${group.join(', ')}] ${isParallel ? '(parallel)' : ''}`);
+
+      const agentPromises = group.map(async (agentId) => {
+        const spec = agentMap.get(agentId);
+        if (!spec) {
+          log.warn(TAG, `Unknown agent id: ${agentId}`);
+          return;
+        }
+
+        this.fsm.updateAgentState(agentId, { status: 'working', currentTask: task.title, progress: 0 });
+        this.emitTimelineEvent('agent_started', agentId, 'coding', `${spec.name} started`);
+
+        try {
+          await this.runDynamicAgent(spec, task);
+          this.fsm.updateAgentState(agentId, { status: 'done', progress: 100 });
+          this.emitTimelineEvent('agent_completed', agentId, 'coding', `${spec.name} completed`);
+        } catch (err) {
+          const msg = err instanceof Error ? err.message : String(err);
+          this.fsm.updateAgentState(agentId, { status: 'error' });
+          this.emitTimelineEvent('agent_error', agentId, 'coding', msg);
+          throw err;
+        }
+      });
+
+      await Promise.all(agentPromises);
+    }
+
+    log.info(TAG, 'Dynamic pipeline complete, merging');
+    this.fsm.setStage('merging');
+    this.emitTimelineEvent('merge_started', 'orchestrator', 'merging', 'Merging changes');
+
+    await this.performMerge();
+    this.fsm.transition('merged');
+    this.emitTimelineEvent('pipeline_completed', null, 'done', 'Dynamic pipeline completed');
+  }
+
+  private async runDynamicAgent(spec: AgentSpec, task: TaskDefinition): Promise<void> {
+    if (!this.claudeClient || !this.worktreeManager || !this.sessionConfig) {
+      throw new Error('Orchestrator not fully initialized');
+    }
+
+    let worktreePath: string;
+    try {
+      worktreePath = await this.worktreeManager.createWorktree(spec.id, this.sessionConfig.id);
+    } catch (err) {
+      throw new Error(`Worktree creation failed for ${spec.id}: ${err instanceof Error ? err.message : String(err)}`);
+    }
+
+    const toolExecutor = new ToolExecutor(worktreePath);
+    const tools = this.resolveToolsForSpec(spec);
+    const userMessage = `## Task\n**${task.title}**\n\n${task.description}`;
+    const outputChunks: string[] = [];
+
+    const output = await this.claudeClient.createAgentMessage({
+      model: spec.model,
+      systemPrompt: spec.systemPrompt,
+      messages: [{ role: 'user', content: userMessage }],
+      tools,
+      onChunk: (chunk) => {
+        outputChunks.push(chunk);
+        this.fsm.updateAgentState(spec.id, { outputChunks: [...outputChunks] });
+        this.emit('agentOutput', { agent: spec.id, chunk, timestamp: Date.now() });
+      },
+      onToolUse: async (toolName, input) => {
+        this.emitTimelineEvent('tool_call', spec.id, 'coding', `Tool: ${toolName}`);
+        return toolExecutor.execute(toolName, input);
+      },
+    });
+
+    this.agentOutputs.set(spec.id, output);
+    try {
+      this.sessionManager.storeAgentOutput(this.sessionConfig.id, spec.id, output);
+    } catch (err) {
+      log.error(TAG, `Failed to persist output for ${spec.id}`, err);
+    }
+  }
+
+  private resolveToolsForSpec(spec: AgentSpec): ToolDefinition[] {
+    const allTools: Record<string, ToolDefinition[]> = {
+      planner: plannerTools,
+      coder: coderTools,
+      tester: testerTools,
+      reviewer: reviewerTools,
+    };
+
+    if (allTools[spec.id]) return allTools[spec.id];
+
+    const toolMap = new Map<string, ToolDefinition>();
+    for (const list of [plannerTools, coderTools, testerTools, reviewerTools]) {
+      for (const tool of list) {
+        toolMap.set(tool.name, tool);
+      }
+    }
+
+    return spec.tools
+      .map((name) => toolMap.get(name))
+      .filter((t): t is ToolDefinition => t !== undefined);
   }
 
   private emitTimelineEvent(

@@ -1,10 +1,24 @@
 import type {
   AgentName,
+  AgentArchitecture,
   PipelineSnapshot,
   PipelineStage,
+  PlanDocument,
+  PlanningMessage,
+  PlanningStatus,
   TimelineEvent,
   GatePendingInfo,
 } from './types.js';
+
+export interface GitHubIssuePayload {
+  number: number;
+  title: string;
+  body: string;
+  labels: string[];
+  state: string;
+  createdAt: string;
+  author: string;
+}
 
 // Extension Host -> Webview
 export type ExtensionMessage =
@@ -24,7 +38,14 @@ export type ExtensionMessage =
     }
   | { type: 'timelineEvent'; payload: TimelineEvent }
   | { type: 'error'; payload: { message: string; recoverable: boolean } }
-  | { type: 'sessionLoaded'; payload: { sessionId: string } };
+  | { type: 'sessionLoaded'; payload: { sessionId: string } }
+  | { type: 'settingsState'; payload: { hasApiKey: boolean; hasGitHubPAT: boolean } }
+  | { type: 'planningMessage'; payload: PlanningMessage }
+  | { type: 'planReady'; payload: PlanDocument }
+  | { type: 'architectureReady'; payload: AgentArchitecture }
+  | { type: 'planningStatus'; payload: { phase: PlanningStatus } }
+  | { type: 'issuesList'; payload: GitHubIssuePayload[] }
+  | { type: 'issueImported'; payload: { title: string; body: string; labels: string[] } };
 
 // Webview -> Extension Host
 export type WebviewMessage =
@@ -41,4 +62,16 @@ export type WebviewMessage =
   | { type: 'abortTask' }
   | { type: 'requestDiff'; payload: { agent: AgentName } }
   | { type: 'selectAgent'; payload: { agent: AgentName } }
-  | { type: 'requestState' };
+  | { type: 'requestState' }
+  | { type: 'saveApiKey'; payload: { apiKey: string } }
+  | { type: 'removeApiKey' }
+  | { type: 'saveGitHubPAT'; payload: { token: string } }
+  | { type: 'requestSettings' }
+  | { type: 'startPlanning'; payload: { description: string; context?: string } }
+  | { type: 'sendPlanningReply'; payload: { message: string } }
+  | { type: 'approvePlan' }
+  | { type: 'revisePlan'; payload: { feedback: string } }
+  | { type: 'approveArchitecture' }
+  | { type: 'reviseArchitecture'; payload: { feedback: string } }
+  | { type: 'fetchIssues'; payload: { filter?: string } }
+  | { type: 'importIssue'; payload: { issueNumber: number } };
