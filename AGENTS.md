@@ -1,29 +1,29 @@
-# AgentFlow Configuration
+# BeeBuilding Hive Configuration
 
-## Agents
+## Bees
 
 ```yaml
 agents:
-  planner:
+  scout_bee:
     model: claude-opus-4-6
     approvalRequired: false
-    timeoutMinutes: 45
-  coder:
+    timeoutMinutes: 30
+  worker_bee:
     model: claude-sonnet-4-6
     approvalRequired: true
     approvalAfterLines: 100
-    timeoutMinutes: 45
-  tester:
+    timeoutMinutes: 30
+  tester_bee:
     model: claude-sonnet-4-6
     approvalRequired: true
-    timeoutMinutes: 45
-  reviewer:
+    timeoutMinutes: 30
+  guard_bee:
     model: claude-opus-4-6
     approvalRequired: true
     timeoutMinutes: 45
 ```
 
-## Gates
+## Queen's Gates
 
 ```yaml
 gates:

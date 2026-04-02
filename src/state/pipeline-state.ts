@@ -33,7 +33,7 @@ interface FSMEvents {
   stateChange: (snapshot: PipelineSnapshot) => void;
 }
 
-const DEFAULT_AGENT_NAMES: string[] = ['planner', 'coder', 'tester', 'reviewer', 'orchestrator'];
+const DEFAULT_AGENT_NAMES: string[] = ['scout_bee', 'worker_bee', 'tester_bee', 'guard_bee', 'queen_bee'];
 
 const TRANSITION_TABLE: Partial<
   Record<PipelineStage, Partial<Record<FSMEvent, PipelineStage>>>

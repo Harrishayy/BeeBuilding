@@ -175,7 +175,7 @@ export function SettingsView() {
         className="pixel-text"
         style={{ fontSize: 8, textAlign: 'center', color: '#888', marginTop: -8, marginBottom: 4 }}
       >
-        Configure keys, skills, and agent frameworks
+        Configure keys, skills, and hive frameworks
       </div>
 
       {/* ── 1. Anthropic API Key ── */}
@@ -195,7 +195,7 @@ export function SettingsView() {
             }}
           >
             <span className="pixel-text" style={{ fontSize: 8, color: '#ffd54f', lineHeight: 1.7 }}>
-              You need an Anthropic API key to run BeeBuilder agents.{' '}
+              You need an Anthropic API key to power the BeeBuilding hive.{' '}
               Get one at console.anthropic.com{' \u2192 '}API Keys.
             </span>
           </div>
@@ -236,7 +236,7 @@ export function SettingsView() {
       <div className="pixel-border" style={{ padding: 12 }}>
         <SectionHeader title="DEFAULT MODEL" />
         <HelpText>
-          Opus is used for planning &amp; review. Sonnet is faster and used for coding &amp; testing.
+          Opus powers Scout &amp; Guard Bees. Sonnet is faster for Worker &amp; Tester Bees.
         </HelpText>
         <select
           className="pixel-select"
@@ -253,7 +253,7 @@ export function SettingsView() {
         <SectionHeader title="SKILLS REPOSITORIES" tag="OPTIONAL" />
         <HelpText>
           Add directories that contain agent skill definitions (SKILL.md files).
-          Skills teach agents specialized capabilities — e.g. testing frameworks,
+          Skills teach bees specialized capabilities — e.g. testing frameworks,
           deployment patterns, or domain knowledge. Each path should point to a
           folder with one or more SKILL.md files.
         </HelpText>
@@ -328,13 +328,13 @@ export function SettingsView() {
 
       {/* ── 4. Multi-Agent Framework ── */}
       <div className="pixel-border" style={{ padding: 12 }}>
-        <SectionHeader title="MULTI-AGENT FRAMEWORK" tag="OPTIONAL" />
+        <SectionHeader title="HIVE FRAMEWORK" tag="OPTIONAL" />
         <HelpText>
           Point to a directory containing a multi-agent orchestration framework
-          (e.g. Ruflo, CrewAI, AutoGen, LangGraph). BeeBuilder reads the
-          framework&apos;s config to understand agent roles, swarm topology,
-          handoff rules, and shared memory — so your pipeline inherits the
-          architecture automatically.
+          (e.g. Ruflo, CrewAI, AutoGen, LangGraph). BeeBuilding reads the
+          framework&apos;s config to understand bee roles, swarm topology,
+          pheromone handoff rules, and shared memory — so your swarm flow
+          inherits the architecture automatically.
         </HelpText>
 
         {settings.agentFrameworkPath ? (

@@ -11,11 +11,11 @@ interface AgentStationProps {
 }
 
 const AGENT_LABELS: Record<string, string> = {
-  planner: 'PLAN',
-  coder: 'CODE',
-  tester: 'TEST',
-  reviewer: 'REVIEW',
-  orchestrator: 'MERGE',
+  scout_bee: 'SCOUT',
+  worker_bee: 'WORKER',
+  tester_bee: 'TESTER',
+  guard_bee: 'GUARD',
+  queen_bee: 'QUEEN',
 };
 
 function getLabel(agent: AgentName): string {
@@ -44,15 +44,15 @@ export function AgentStation({
         cursor: 'pointer',
       }}
     >
-      {/* Active glow ring */}
+      {/* Active glow ring — amber for the hive */}
       {isActive && (
         <div
           className="anim-pulse"
           style={{
             position: 'absolute',
             inset: -4,
-            border: '2px solid #42a5f5',
-            color: '#42a5f5',
+            border: '2px solid #FFB300',
+            color: '#FFB300',
             pointerEvents: 'none',
             zIndex: 2,
           }}
@@ -62,7 +62,7 @@ export function AgentStation({
       <div
         className="pixel-border"
         style={{
-          background: '#0f3460',
+          background: '#111111',
           padding: 12,
           display: 'flex',
           flexDirection: 'column',
@@ -71,16 +71,17 @@ export function AgentStation({
           minWidth: 100,
           position: 'relative',
           overflow: 'hidden',
+          borderColor: '#FFA000',
         }}
       >
-        {/* Tiled floor background */}
+        {/* Honeycomb cell background */}
         <div
           style={{
             position: 'absolute',
             inset: 3,
             background: `repeating-conic-gradient(
-              #0d2b4d 0% 25%,
-              #0f3460 0% 50%
+              #1a1a0d 0% 25%,
+              #111111 0% 50%
             ) 0 0 / 12px 12px`,
             opacity: 0.5,
             zIndex: 0,
@@ -105,7 +106,7 @@ export function AgentStation({
             style={{
               fontSize: 10,
               letterSpacing: 1,
-              color: isActive ? '#fff' : '#aaa',
+              color: isActive ? '#FFB300' : '#aaa',
               textAlign: 'center',
             }}
           >

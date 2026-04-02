@@ -2,28 +2,28 @@ import { randomUUID } from 'node:crypto';
 import type { AgentConfig, AgentName, GateConfig, SessionConfig } from '../shared/types.js';
 
 export const defaultAgentConfigs: Record<AgentName, AgentConfig> = {
-  planner: {
+  scout_bee: {
     model: 'claude-opus-4-6',
     approvalRequired: false,
     timeoutMinutes: 45,
   },
-  coder: {
+  worker_bee: {
     model: 'claude-sonnet-4-6',
     approvalRequired: true,
     approvalAfterLines: 100,
     timeoutMinutes: 45,
   },
-  tester: {
+  tester_bee: {
     model: 'claude-sonnet-4-6',
     approvalRequired: true,
     timeoutMinutes: 45,
   },
-  reviewer: {
+  guard_bee: {
     model: 'claude-opus-4-6',
     approvalRequired: true,
     timeoutMinutes: 45,
   },
-  orchestrator: {
+  queen_bee: {
     model: 'claude-opus-4-6',
     approvalRequired: false,
     timeoutMinutes: 90,

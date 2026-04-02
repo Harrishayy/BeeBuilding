@@ -25,14 +25,14 @@ function getWebviewHtml(webview: vscode.Webview, extensionUri: vscode.Uri): stri
                  img-src ${webview.cspSource} data:;">
   <link href="https://fonts.googleapis.com/css2?family=Press+Start+2P&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="${styleUri}">
-  <title>BeeBuilder Mission Control</title>
+  <title>BeeBuilding — Hive Mind</title>
 </head>
 <body style="margin: 0; padding: 0; background: #1a1a2e;">
-  <div id="root"><p style="color:#ffd54f;padding:20px;font-family:monospace;font-size:12px;">Loading BeeBuilder...</p></div>
+  <div id="root"><p style="color:#ffd54f;padding:20px;font-family:monospace;font-size:12px;">Loading BeeBuilding Hive...</p></div>
   <script nonce="${nonce}">
     window.onerror = function(msg, src, line, col, err) {
       var el = document.getElementById('root') || document.body;
-      el.innerHTML = '<pre style="color:#ef5350;background:#0a0a14;padding:20px;margin:10px;font-size:11px;white-space:pre-wrap;word-break:break-word;font-family:monospace;border:2px solid #ef5350;">[BeeBuilder Error]\\n' + (err ? err.message + '\\n\\n' + err.stack : msg) + '</pre>';
+      el.innerHTML = '<pre style="color:#ef5350;background:#0a0a14;padding:20px;margin:10px;font-size:11px;white-space:pre-wrap;word-break:break-word;font-family:monospace;border:2px solid #ef5350;">[BeeBuilding Hive Error]\\n' + (err ? err.message + '\\n\\n' + err.stack : msg) + '</pre>';
     };
   </script>
   <script nonce="${nonce}" src="${scriptUri}"></script>
@@ -51,7 +51,7 @@ function getNonce(): string {
 
 // ─── Sidebar view (WebviewViewProvider) ──────────────────────────────
 
-export class AgentFlowSidebarProvider implements vscode.WebviewViewProvider {
+export class HiveMindSidebarProvider implements vscode.WebviewViewProvider {
   public static readonly viewType = 'beebuilder.missionControl';
 
   private _view?: vscode.WebviewView;
@@ -97,10 +97,10 @@ export class AgentFlowSidebarProvider implements vscode.WebviewViewProvider {
 
 // ─── Editor panel (WebviewPanel) ────────────────────────────────────
 
-export class AgentFlowPanel {
+export class HiveMindPanel {
   public static readonly viewType = 'beebuilder.panel';
 
-  private static _instance: AgentFlowPanel | undefined;
+  private static _instance: HiveMindPanel | undefined;
   private readonly _panel: vscode.WebviewPanel;
   private readonly _extensionUri: vscode.Uri;
   private _onMessage: (message: WebviewMessage) => void;
@@ -129,15 +129,15 @@ export class AgentFlowPanel {
   public static createOrShow(
     extensionUri: vscode.Uri,
     onMessage: (message: WebviewMessage) => void,
-  ): AgentFlowPanel {
-    if (AgentFlowPanel._instance) {
-      AgentFlowPanel._instance._panel.reveal(vscode.ViewColumn.One);
-      return AgentFlowPanel._instance;
+  ): HiveMindPanel {
+    if (HiveMindPanel._instance) {
+      HiveMindPanel._instance._panel.reveal(vscode.ViewColumn.One);
+      return HiveMindPanel._instance;
     }
 
     const panel = vscode.window.createWebviewPanel(
-      AgentFlowPanel.viewType,
-      'BeeBuilder — Mission Control',
+      HiveMindPanel.viewType,
+      'BeeBuilding — Hive Mind',
       vscode.ViewColumn.One,
       {
         enableScripts: true,
@@ -151,12 +151,12 @@ export class AgentFlowPanel {
 
     panel.iconPath = vscode.Uri.joinPath(extensionUri, 'resources', 'icon.svg');
 
-    AgentFlowPanel._instance = new AgentFlowPanel(panel, extensionUri, onMessage);
-    return AgentFlowPanel._instance;
+    HiveMindPanel._instance = new HiveMindPanel(panel, extensionUri, onMessage);
+    return HiveMindPanel._instance;
   }
 
-  public static getInstance(): AgentFlowPanel | undefined {
-    return AgentFlowPanel._instance;
+  public static getInstance(): HiveMindPanel | undefined {
+    return HiveMindPanel._instance;
   }
 
   public postMessage(message: ExtensionMessage): void {
@@ -168,7 +168,7 @@ export class AgentFlowPanel {
   }
 
   public dispose(): void {
-    AgentFlowPanel._instance = undefined;
+    HiveMindPanel._instance = undefined;
     this._panel.dispose();
     while (this._disposables.length) {
       const d = this._disposables.pop();

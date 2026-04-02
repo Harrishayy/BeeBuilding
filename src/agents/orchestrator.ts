@@ -27,7 +27,7 @@ import { plannerTools, coderTools, testerTools, reviewerTools, type ToolDefiniti
 import { parseAgentsConfig } from '../config/agents-parser.js';
 import { log } from '../util/logger.js';
 
-const TAG = 'Orchestrator';
+const TAG = 'QueenBee';
 
 const DEFAULT_TIMEOUT_MS = 60 * 60 * 1000;
 
@@ -71,28 +71,28 @@ interface PipelineStageInfo {
 const PIPELINE_STAGES: PipelineStageInfo[] = [
   {
     workingStage: 'planning',
-    agent: 'planner',
+    agent: 'scout_bee',
     completeEvent: 'planComplete',
     approvalStage: 'plan_approval',
     gateKey: 'afterPlanning',
   },
   {
     workingStage: 'coding',
-    agent: 'coder',
+    agent: 'worker_bee',
     completeEvent: 'codeComplete',
     approvalStage: 'code_approval',
     gateKey: 'afterCoding',
   },
   {
     workingStage: 'testing',
-    agent: 'tester',
+    agent: 'tester_bee',
     completeEvent: 'testsComplete',
     approvalStage: 'test_approval',
     gateKey: 'afterTesting',
   },
   {
     workingStage: 'reviewing',
-    agent: 'reviewer',
+    agent: 'guard_bee',
     completeEvent: 'reviewComplete',
     approvalStage: 'review_approval',
     gateKey: 'afterReview',
@@ -100,13 +100,13 @@ const PIPELINE_STAGES: PipelineStageInfo[] = [
 ];
 
 const AGENT_TO_NEXT: Record<string, AgentName> = {
-  planner: 'coder',
-  coder: 'tester',
-  tester: 'reviewer',
-  reviewer: 'orchestrator',
+  scout_bee: 'worker_bee',
+  worker_bee: 'tester_bee',
+  tester_bee: 'guard_bee',
+  guard_bee: 'queen_bee',
 };
 
-export class AgentOrchestrator extends EventEmitter<OrchestratorEvents> {
+export class QueenOrchestrator extends EventEmitter<OrchestratorEvents> {
   private fsm: PipelineFSM;
   private sessionManager: SessionManager;
   private worktreeManager: WorktreeManager | null = null;
@@ -124,29 +124,29 @@ export class AgentOrchestrator extends EventEmitter<OrchestratorEvents> {
 
   constructor(private readonly context: vscode.ExtensionContext) {
     super();
-    log.info(TAG, 'Initializing orchestrator');
+    log.info(TAG, 'Queen Bee awakening... initializing the hive');
 
     const storagePath = context.globalStorageUri.fsPath;
     try {
       fs.mkdirSync(storagePath, { recursive: true });
-      log.debug(TAG, `Storage path: ${storagePath}`);
+      log.debug(TAG, `Hive storage: ${storagePath}`);
     } catch (err) {
-      log.error(TAG, 'Failed to create storage directory', err);
+      log.error(TAG, 'Failed to build hive storage', err);
       throw err;
     }
 
-    const dbPath = path.join(storagePath, 'agentflow.db');
+    const dbPath = path.join(storagePath, 'beebuilding.db');
     try {
       this.sessionManager = new SessionManager(dbPath);
-      log.info(TAG, 'Session manager initialized');
+      log.info(TAG, 'Colony memory initialized');
     } catch (err) {
-      log.error(TAG, 'Failed to initialize session manager', err);
+      log.error(TAG, 'Failed to initialize colony memory', err);
       throw err;
     }
 
     this.fsm = new PipelineFSM();
     this.fsm.on('stateChange', (snapshot) => {
-      log.debug(TAG, `FSM state change: ${snapshot.stage}`);
+      log.debug(TAG, `Swarm state shift: ${snapshot.stage}`);
       this.emit('stateChange', snapshot);
       if (this.sessionConfig) {
         try {
@@ -156,36 +156,36 @@ export class AgentOrchestrator extends EventEmitter<OrchestratorEvents> {
             JSON.stringify(snapshot),
           );
         } catch (err) {
-          log.error(TAG, 'Failed to persist pipeline state', err);
+          log.error(TAG, 'Failed to persist swarm state', err);
         }
       }
     });
 
-    log.info(TAG, 'Orchestrator initialized');
+    log.info(TAG, 'Queen Bee is ready. The hive awaits orders.');
   }
 
   createSession(): void {
-    log.info(TAG, 'Creating new session');
+    log.info(TAG, 'Establishing new colony session');
     const workspaceFolders = vscode.workspace.workspaceFolders;
     if (!workspaceFolders || workspaceFolders.length === 0) {
-      log.warn(TAG, 'No workspace folder open');
+      log.warn(TAG, 'No workspace hive found');
       this.emit('error', { message: 'No workspace folder open', recoverable: true });
       return;
     }
 
     const projectPath = workspaceFolders[0].uri.fsPath;
-    log.info(TAG, `Project path: ${projectPath}`);
+    log.info(TAG, `Hive root: ${projectPath}`);
 
     let config: SessionConfig;
     try {
       config = parseAgentsConfig(projectPath);
-      log.info(TAG, `Session config parsed, id=${config.id}`, {
-        agents: Object.keys(config.agents),
+      log.info(TAG, `Colony config parsed, session=${config.id}`, {
+        bees: Object.keys(config.agents),
         gates: config.gates,
         gitMergeStrategy: config.gitMergeStrategy,
       });
     } catch (err) {
-      log.error(TAG, 'Failed to parse AGENTS.md config', err);
+      log.error(TAG, 'Failed to parse AGENTS.md colony config', err);
       this.emit('error', {
         message: `Failed to parse config: ${err instanceof Error ? err.message : String(err)}`,
         recoverable: true,
@@ -198,7 +198,7 @@ export class AgentOrchestrator extends EventEmitter<OrchestratorEvents> {
     try {
       this.sessionManager.createSession(config);
     } catch (err) {
-      log.error(TAG, 'Failed to persist session', err);
+      log.error(TAG, 'Failed to persist colony session', err);
     }
 
     this.fsm.setSessionId(config.id);
@@ -206,9 +206,9 @@ export class AgentOrchestrator extends EventEmitter<OrchestratorEvents> {
 
     try {
       this.worktreeManager = new WorktreeManager(projectPath);
-      log.info(TAG, 'Worktree manager initialized');
+      log.info(TAG, 'Worktree chambers ready');
     } catch (err) {
-      log.error(TAG, 'Failed to initialize worktree manager', err);
+      log.error(TAG, 'Failed to initialize worktree chambers', err);
       this.emit('error', {
         message: `Git worktree init failed: ${err instanceof Error ? err.message : String(err)}`,
         recoverable: false,
@@ -223,9 +223,9 @@ export class AgentOrchestrator extends EventEmitter<OrchestratorEvents> {
     );
     try {
       this.timelineLog = new TimelineLog(logPath);
-      log.debug(TAG, `Timeline log: ${logPath}`);
+      log.debug(TAG, `Colony timeline: ${logPath}`);
     } catch (err) {
-      log.error(TAG, 'Failed to create timeline log', err);
+      log.error(TAG, 'Failed to create colony timeline', err);
     }
 
     this.agentOutputs.clear();
@@ -233,21 +233,21 @@ export class AgentOrchestrator extends EventEmitter<OrchestratorEvents> {
     this.aborted = false;
     this.rejectionFeedback = '';
 
-    this.emitTimelineEvent('pipeline_started', null, 'idle', 'Session created');
-    log.info(TAG, `Session created: ${config.id}`);
+    this.emitTimelineEvent('pipeline_started', null, 'idle', 'Colony session established — bees standing by');
+    log.info(TAG, `Colony session created: ${config.id}`);
   }
 
   async submitTask(task: TaskDefinition): Promise<void> {
-    log.info(TAG, `Task submitted: "${task.title}" (priority=${task.priority}, id=${task.id})`);
+    log.info(TAG, `Nectar run received: "${task.title}" (priority=${task.priority}, id=${task.id})`);
 
     if (!this.sessionConfig) {
-      log.info(TAG, 'No session exists, creating one');
+      log.info(TAG, 'No colony session, creating one');
       this.createSession();
     }
 
     this.runPipeline(task).catch((err: unknown) => {
       const message = err instanceof Error ? err.message : String(err);
-      log.error(TAG, `Pipeline failed: ${message}`, err);
+      log.error(TAG, `Swarm flow failed: ${message}`, err);
       this.fsm.setError(message);
       this.fsm.transition('error');
       this.emitTimelineEvent('pipeline_failed', null, this.fsm.getStage(), message);
@@ -256,7 +256,7 @@ export class AgentOrchestrator extends EventEmitter<OrchestratorEvents> {
   }
 
   async submitTaskWithArchitecture(task: TaskDefinition, architecture: AgentArchitecture, plan?: PlanDocument): Promise<void> {
-    log.info(TAG, `Dynamic task submitted: "${task.title}" with ${architecture.agents.length} agents`);
+    log.info(TAG, `Dynamic nectar run: "${task.title}" with ${architecture.agents.length} bees`);
 
     if (!this.sessionConfig) {
       this.createSession();
@@ -267,7 +267,7 @@ export class AgentOrchestrator extends EventEmitter<OrchestratorEvents> {
 
     this.runDynamicPipeline(task, architecture).catch((err: unknown) => {
       const message = err instanceof Error ? err.message : String(err);
-      log.error(TAG, `Dynamic pipeline failed: ${message}`, err);
+      log.error(TAG, `Dynamic swarm flow failed: ${message}`, err);
       this.fsm.setError(message);
       this.fsm.transition('error');
       this.emitTimelineEvent('pipeline_failed', null, this.fsm.getStage(), message);
@@ -276,31 +276,31 @@ export class AgentOrchestrator extends EventEmitter<OrchestratorEvents> {
   }
 
   approveCurrentGate(): void {
-    log.info(TAG, 'Gate approved by user');
+    log.info(TAG, "Queen's Gate approved by beekeeper");
     if (this.gateResolve) {
       const resolve = this.gateResolve;
       this.gateResolve = null;
       resolve(true);
     } else {
-      log.warn(TAG, 'approveCurrentGate called but no gate is pending');
+      log.warn(TAG, "approveCurrentGate called but no Queen's Gate is pending");
     }
   }
 
   rejectCurrentGate(feedback: string): void {
-    log.info(TAG, `Gate rejected by user: "${feedback}"`);
+    log.info(TAG, `Queen's Gate rejected by beekeeper: "${feedback}"`);
     this.rejectionFeedback = feedback;
     if (this.gateResolve) {
       const resolve = this.gateResolve;
       this.gateResolve = null;
       resolve(false);
     } else {
-      log.warn(TAG, 'rejectCurrentGate called but no gate is pending');
+      log.warn(TAG, "rejectCurrentGate called but no Queen's Gate is pending");
     }
   }
 
   pause(): void {
     this.paused = !this.paused;
-    log.info(TAG, `Pipeline ${this.paused ? 'paused' : 'resumed'}`);
+    log.info(TAG, `Swarm flow ${this.paused ? 'paused — bees on standby' : 'resumed — bees buzzing again'}`);
     if (!this.paused && this.pauseResolve) {
       const resolve = this.pauseResolve;
       this.pauseResolve = null;
@@ -309,7 +309,7 @@ export class AgentOrchestrator extends EventEmitter<OrchestratorEvents> {
   }
 
   abort(): void {
-    log.info(TAG, 'Pipeline abort requested');
+    log.info(TAG, 'Swarm flow abort — all bees returning to hive');
     this.aborted = true;
 
     if (this.gateResolve) {
@@ -331,11 +331,11 @@ export class AgentOrchestrator extends EventEmitter<OrchestratorEvents> {
       return;
     }
 
-    log.debug(TAG, `Fetching diff for agent: ${agent}`);
+    log.debug(TAG, `Fetching nectar diff for ${agent}`);
     this.worktreeManager
       .getDiff(agent, this.sessionConfig.id)
       .then((diff) => {
-        log.debug(TAG, `Diff for ${agent}: ${diff.length} chars`);
+        log.debug(TAG, `Nectar diff for ${agent}: ${diff.length} chars`);
         this.emit('agentOutput', {
           agent,
           chunk: diff,
@@ -344,7 +344,7 @@ export class AgentOrchestrator extends EventEmitter<OrchestratorEvents> {
       })
       .catch((err: unknown) => {
         const message = err instanceof Error ? err.message : String(err);
-        log.error(TAG, `Failed to get diff for ${agent}`, err);
+        log.error(TAG, `Failed to get nectar diff for ${agent}`, err);
         this.emit('error', {
           message: `Failed to get diff for ${agent}: ${message}`,
           recoverable: true,
@@ -357,47 +357,47 @@ export class AgentOrchestrator extends EventEmitter<OrchestratorEvents> {
   }
 
   dispose(): void {
-    log.info(TAG, 'Disposing orchestrator');
+    log.info(TAG, 'Shutting down the hive');
     if (this.worktreeManager) {
       this.worktreeManager.cleanupAll().catch((err) => {
-        log.error(TAG, 'Error cleaning up worktrees on dispose', err);
+        log.error(TAG, 'Error cleaning up worktree chambers on dispose', err);
       });
     }
     try {
       this.sessionManager.close();
     } catch (err) {
-      log.error(TAG, 'Error closing session manager', err);
+      log.error(TAG, 'Error closing colony memory', err);
     }
     this.removeAllListeners();
   }
 
-  // --- Private pipeline logic ---
+  // --- Private swarm flow logic ---
 
   private async runPipeline(task: TaskDefinition): Promise<void> {
-    log.info(TAG, `Starting pipeline for task: "${task.title}"`);
+    log.info(TAG, `Initiating swarm flow for nectar run: "${task.title}"`);
     await this.ensureClaudeClient();
 
     this.fsm.setTask(task);
     this.fsm.transition('taskSubmitted');
-    this.emitTimelineEvent('pipeline_started', null, 'planning', `Task: ${task.title}`);
+    this.emitTimelineEvent('pipeline_started', null, 'planning', `Nectar Run: ${task.title}`);
 
     let currentStageIndex = 0;
 
     while (currentStageIndex < PIPELINE_STAGES.length) {
       if (this.aborted) {
-        throw new Error('Pipeline aborted by user');
+        throw new Error('Swarm flow aborted by beekeeper');
       }
 
       if (this.paused) {
-        log.info(TAG, 'Pipeline paused, waiting for resume');
+        log.info(TAG, 'Swarm flow paused — bees waiting for signal');
         await this.waitForResume();
         if (this.aborted) {
-          throw new Error('Pipeline aborted by user');
+          throw new Error('Swarm flow aborted by beekeeper');
         }
       }
 
       const stageInfo = PIPELINE_STAGES[currentStageIndex];
-      log.info(TAG, `=== Stage ${currentStageIndex + 1}/${PIPELINE_STAGES.length}: ${stageInfo.workingStage} (agent=${stageInfo.agent}) ===`);
+      log.info(TAG, `=== Swarm stage ${currentStageIndex + 1}/${PIPELINE_STAGES.length}: ${stageInfo.workingStage} (bee=${stageInfo.agent}) ===`);
 
       this.fsm.updateAgentState(stageInfo.agent, {
         status: 'working',
@@ -405,21 +405,22 @@ export class AgentOrchestrator extends EventEmitter<OrchestratorEvents> {
         progress: 0,
       });
 
+      const beeVerb = this.getBeeVerb(stageInfo.agent);
       this.emitTimelineEvent(
         'agent_started',
         stageInfo.agent,
         stageInfo.workingStage,
-        `${stageInfo.agent} started`,
+        beeVerb,
       );
 
       try {
         const startTime = Date.now();
         await this.runAgentStage(stageInfo, task);
         const elapsed = ((Date.now() - startTime) / 1000).toFixed(1);
-        log.info(TAG, `Agent ${stageInfo.agent} completed in ${elapsed}s`);
+        log.info(TAG, `${stageInfo.agent} returned to hive in ${elapsed}s`);
       } catch (err) {
         const message = err instanceof Error ? err.message : String(err);
-        log.error(TAG, `Agent ${stageInfo.agent} failed`, err);
+        log.error(TAG, `${stageInfo.agent} encountered a problem`, err);
         this.fsm.updateAgentState(stageInfo.agent, { status: 'error' });
         this.emitTimelineEvent(
           'agent_error',
@@ -438,27 +439,27 @@ export class AgentOrchestrator extends EventEmitter<OrchestratorEvents> {
         'agent_completed',
         stageInfo.agent,
         stageInfo.workingStage,
-        `${stageInfo.agent} completed`,
+        `${stageInfo.agent} finished pollinating`,
       );
 
       this.fsm.transition(stageInfo.completeEvent);
 
       const currentFSMStage = this.fsm.getStage();
       if (currentFSMStage !== stageInfo.approvalStage) {
-        log.debug(TAG, `Gate auto-skipped for ${stageInfo.approvalStage}`);
+        log.debug(TAG, `Queen's Gate auto-skipped for ${stageInfo.approvalStage}`);
         this.emitTimelineEvent(
           'gate_approved',
           stageInfo.agent,
           stageInfo.approvalStage,
-          `Gate auto-skipped for ${stageInfo.approvalStage}`,
+          `Queen's Gate auto-cleared for ${stageInfo.approvalStage}`,
         );
 
-        const nextAgent = AGENT_TO_NEXT[stageInfo.agent] ?? 'orchestrator';
+        const nextAgent = AGENT_TO_NEXT[stageInfo.agent] ?? 'queen_bee';
         this.emitTimelineEvent(
           'handoff',
           stageInfo.agent,
           currentFSMStage,
-          `Handoff from ${stageInfo.agent} to ${nextAgent}`,
+          `Pheromone handoff: ${stageInfo.agent} → ${nextAgent}`,
         );
 
         currentStageIndex++;
@@ -468,24 +469,24 @@ export class AgentOrchestrator extends EventEmitter<OrchestratorEvents> {
       const gateConfig = this.sessionConfig!.gates[stageInfo.gateKey];
 
       if (gateConfig === 'optional') {
-        log.debug(TAG, `Optional gate auto-approved for ${stageInfo.approvalStage}`);
+        log.debug(TAG, `Optional Queen's Gate auto-approved for ${stageInfo.approvalStage}`);
         this.emitTimelineEvent(
           'gate_approved',
           stageInfo.agent,
           stageInfo.approvalStage,
-          `Optional gate auto-approved for ${stageInfo.approvalStage}`,
+          `Optional Queen's Gate auto-cleared for ${stageInfo.approvalStage}`,
         );
         this.fsm.transition('approved');
         currentStageIndex++;
         continue;
       }
 
-      log.info(TAG, `Waiting for user approval at ${stageInfo.approvalStage}`);
+      log.info(TAG, `Awaiting beekeeper approval at Queen's Gate: ${stageInfo.approvalStage}`);
       const diffStats = await this.computeDiffStats(stageInfo.agent);
       const gatePending: GatePendingInfo = {
         stage: stageInfo.approvalStage,
         fromAgent: stageInfo.agent,
-        toAgent: AGENT_TO_NEXT[stageInfo.agent] ?? 'orchestrator',
+        toAgent: AGENT_TO_NEXT[stageInfo.agent] ?? 'queen_bee',
         filesChanged: diffStats.filesChanged,
         linesAdded: diffStats.linesAdded,
         linesRemoved: diffStats.linesRemoved,
@@ -498,11 +499,11 @@ export class AgentOrchestrator extends EventEmitter<OrchestratorEvents> {
         'gate_pending',
         stageInfo.agent,
         stageInfo.approvalStage,
-        `Awaiting approval at ${stageInfo.approvalStage}`,
+        `Queen's Gate: awaiting beekeeper approval at ${stageInfo.approvalStage}`,
       );
 
       const approved = await this.waitForGateApproval();
-      log.info(TAG, `Gate ${stageInfo.approvalStage} ${approved ? 'approved' : 'rejected'}`);
+      log.info(TAG, `Queen's Gate ${stageInfo.approvalStage} ${approved ? 'approved — bees proceed' : 'rejected — returning to cell'}`);
 
       if (approved) {
         this.fsm.transition('approved');
@@ -514,28 +515,28 @@ export class AgentOrchestrator extends EventEmitter<OrchestratorEvents> {
           'gate_approved',
           stageInfo.agent,
           stageInfo.approvalStage,
-          `Gate approved for ${stageInfo.approvalStage}`,
+          `Queen's Gate cleared for ${stageInfo.approvalStage}`,
         );
 
-        const nextAgent = AGENT_TO_NEXT[stageInfo.agent] ?? 'orchestrator';
+        const nextAgent = AGENT_TO_NEXT[stageInfo.agent] ?? 'queen_bee';
         this.emitTimelineEvent(
           'handoff',
           stageInfo.agent,
           this.fsm.getStage(),
-          `Handoff from ${stageInfo.agent} to ${nextAgent}`,
+          `Pheromone handoff: ${stageInfo.agent} → ${nextAgent}`,
         );
 
         currentStageIndex++;
       } else {
         if (this.aborted) {
-          throw new Error('Pipeline aborted by user');
+          throw new Error('Swarm flow aborted by beekeeper');
         }
 
         this.emitTimelineEvent(
           'gate_rejected',
           stageInfo.agent,
           stageInfo.approvalStage,
-          `Gate rejected: ${this.rejectionFeedback || 'No feedback provided'}`,
+          `Queen's Gate rejected: ${this.rejectionFeedback || 'No feedback provided'}`,
         );
 
         this.fsm.transition('rejected');
@@ -545,7 +546,7 @@ export class AgentOrchestrator extends EventEmitter<OrchestratorEvents> {
         });
 
         const rejectedToStage = this.fsm.getStage();
-        log.info(TAG, `Rejected, returning to stage: ${rejectedToStage}`);
+        log.info(TAG, `Rejected — bee returning to stage: ${rejectedToStage}`);
         const backIndex = PIPELINE_STAGES.findIndex(
           (s) => s.workingStage === rejectedToStage,
         );
@@ -553,15 +554,15 @@ export class AgentOrchestrator extends EventEmitter<OrchestratorEvents> {
       }
     }
 
-    log.info(TAG, 'All agent stages complete, beginning merge');
-    this.emitTimelineEvent('merge_started', 'orchestrator', 'merging', 'Merging changes');
+    log.info(TAG, 'All bees have reported — Queen Bee begins the merge dance');
+    this.emitTimelineEvent('merge_started', 'queen_bee', 'merging', 'Queen Bee is sealing the honeycomb...');
 
     await this.performMerge();
     this.fsm.transition('merged');
 
-    this.emitTimelineEvent('merge_completed', 'orchestrator', 'done', 'Merge complete');
-    this.emitTimelineEvent('pipeline_completed', null, 'done', 'Pipeline completed successfully');
-    log.info(TAG, 'Pipeline completed successfully');
+    this.emitTimelineEvent('merge_completed', 'queen_bee', 'done', 'Honeycomb sealed — merge complete');
+    this.emitTimelineEvent('pipeline_completed', null, 'done', 'Swarm flow completed — nectar run successful!');
+    log.info(TAG, 'Swarm flow completed successfully');
   }
 
   private async runAgentStage(
@@ -569,30 +570,30 @@ export class AgentOrchestrator extends EventEmitter<OrchestratorEvents> {
     task: TaskDefinition,
   ): Promise<void> {
     if (!this.claudeClient || !this.worktreeManager || !this.sessionConfig) {
-      throw new Error('Orchestrator not fully initialized');
+      throw new Error('Queen Bee not fully initialized');
     }
 
-    log.debug(TAG, `Creating worktree for ${stageInfo.agent}`);
+    log.debug(TAG, `Preparing worktree chamber for ${stageInfo.agent}`);
     let worktreePath: string;
     try {
       worktreePath = await this.worktreeManager.createWorktree(
         stageInfo.agent,
         this.sessionConfig.id,
       );
-      log.debug(TAG, `Worktree created at: ${worktreePath}`);
+      log.debug(TAG, `Worktree chamber built at: ${worktreePath}`);
     } catch (err) {
-      log.error(TAG, `Failed to create worktree for ${stageInfo.agent}`, err);
+      log.error(TAG, `Failed to build worktree chamber for ${stageInfo.agent}`, err);
       throw new Error(`Worktree creation failed for ${stageInfo.agent}: ${err instanceof Error ? err.message : String(err)}`);
     }
 
     const systemPrompt = this.loadSystemPrompt(stageInfo.agent);
-    log.debug(TAG, `System prompt loaded for ${stageInfo.agent} (${systemPrompt.length} chars)`);
+    log.debug(TAG, `Flight plan loaded for ${stageInfo.agent} (${systemPrompt.length} chars)`);
 
     const toolExecutor = new ToolExecutor(worktreePath);
     const tools = this.getToolsForAgent(stageInfo.agent);
     const userMessage = this.buildAgentContext(stageInfo.agent, task);
 
-    log.debug(TAG, `Calling Claude API for ${stageInfo.agent} (model=${this.sessionConfig.agents[stageInfo.agent].model})`);
+    log.debug(TAG, `Dispatching ${stageInfo.agent} to Claude API (model=${this.sessionConfig.agents[stageInfo.agent].model})`);
     const outputChunks: string[] = [];
 
     const output = await this.claudeClient.createAgentMessage({
@@ -610,7 +611,7 @@ export class AgentOrchestrator extends EventEmitter<OrchestratorEvents> {
         });
       },
       onToolUse: async (toolName, input) => {
-        log.debug(TAG, `${stageInfo.agent} tool call: ${toolName}`, input);
+        log.debug(TAG, `${stageInfo.agent} using tool: ${toolName}`, input);
         this.emitTimelineEvent(
           'tool_call',
           stageInfo.agent,
@@ -628,7 +629,7 @@ export class AgentOrchestrator extends EventEmitter<OrchestratorEvents> {
       },
     });
 
-    log.info(TAG, `${stageInfo.agent} produced ${output.length} chars of output`);
+    log.info(TAG, `${stageInfo.agent} produced ${output.length} chars of nectar`);
     this.agentOutputs.set(stageInfo.agent, output);
 
     try {
@@ -638,14 +639,14 @@ export class AgentOrchestrator extends EventEmitter<OrchestratorEvents> {
         output,
       );
     } catch (err) {
-      log.error(TAG, `Failed to persist agent output for ${stageInfo.agent}`, err);
+      log.error(TAG, `Failed to store nectar output for ${stageInfo.agent}`, err);
     }
   }
 
   private buildAgentContext(agent: AgentName, task: TaskDefinition): string {
     const parts: string[] = [];
 
-    parts.push(`## Task\n**${task.title}**\n\n${task.description}`);
+    parts.push(`## Nectar Run\n**${task.title}**\n\n${task.description}`);
 
     if (task.priority) {
       parts.push(`\n**Priority**: ${task.priority}`);
@@ -655,25 +656,25 @@ export class AgentOrchestrator extends EventEmitter<OrchestratorEvents> {
     }
 
     switch (agent) {
-      case 'coder': {
-        const plannerOutput = this.agentOutputs.get('planner');
-        if (plannerOutput) {
-          parts.push(`\n## Planner Specification\n${plannerOutput}`);
+      case 'worker_bee': {
+        const scoutOutput = this.agentOutputs.get('scout_bee');
+        if (scoutOutput) {
+          parts.push(`\n## Scout Bee Specification\n${scoutOutput}`);
         }
         break;
       }
-      case 'tester': {
-        const coderOutput = this.agentOutputs.get('coder');
-        if (coderOutput) {
-          parts.push(`\n## Coder Implementation Summary\n${coderOutput}`);
+      case 'tester_bee': {
+        const workerOutput = this.agentOutputs.get('worker_bee');
+        if (workerOutput) {
+          parts.push(`\n## Worker Bee Implementation Summary\n${workerOutput}`);
         }
         break;
       }
-      case 'reviewer': {
-        const coderOutput = this.agentOutputs.get('coder');
-        const testerOutput = this.agentOutputs.get('tester');
-        if (coderOutput) {
-          parts.push(`\n## Implementation Summary\n${coderOutput}`);
+      case 'guard_bee': {
+        const workerOutput = this.agentOutputs.get('worker_bee');
+        const testerOutput = this.agentOutputs.get('tester_bee');
+        if (workerOutput) {
+          parts.push(`\n## Implementation Summary\n${workerOutput}`);
         }
         if (testerOutput) {
           parts.push(`\n## Test Results\n${testerOutput}`);
@@ -694,13 +695,13 @@ export class AgentOrchestrator extends EventEmitter<OrchestratorEvents> {
 
   private getToolsForAgent(agent: AgentName): ToolDefinition[] {
     switch (agent) {
-      case 'planner':
+      case 'scout_bee':
         return plannerTools;
-      case 'coder':
+      case 'worker_bee':
         return coderTools;
-      case 'tester':
+      case 'tester_bee':
         return testerTools;
-      case 'reviewer':
+      case 'guard_bee':
         return reviewerTools;
       default:
         return [];
@@ -708,8 +709,8 @@ export class AgentOrchestrator extends EventEmitter<OrchestratorEvents> {
   }
 
   private loadSystemPrompt(agent: AgentName): string {
-    if (agent === 'orchestrator') {
-      return 'You are the orchestrator agent.';
+    if (agent === 'queen_bee') {
+      return 'You are the Queen Bee orchestrator agent for the BeeBuilding hive.';
     }
 
     const extensionPath = this.context.extensionPath;
@@ -722,37 +723,52 @@ export class AgentOrchestrator extends EventEmitter<OrchestratorEvents> {
     for (const candidate of candidates) {
       try {
         if (fs.existsSync(candidate)) {
-          log.debug(TAG, `System prompt found: ${candidate}`);
+          log.debug(TAG, `Flight plan found: ${candidate}`);
           return fs.readFileSync(candidate, 'utf-8');
         }
       } catch (err) {
-        log.warn(TAG, `Failed to read prompt file: ${candidate}`, err);
+        log.warn(TAG, `Failed to read flight plan: ${candidate}`, err);
       }
     }
 
-    log.warn(TAG, `No system prompt file found for ${agent}, using fallback`);
+    log.warn(TAG, `No flight plan found for ${agent}, using fallback`);
     return this.getFallbackPrompt(agent);
   }
 
   private getFallbackPrompt(agent: AgentName): string {
     switch (agent) {
-      case 'planner':
-        return 'You are a planning agent. Analyze the task, inspect the codebase using available tools, and produce a detailed JSON implementation specification with subtasks, files to modify, success criteria, and risks.';
-      case 'coder':
-        return 'You are a coding agent. Follow the planner specification exactly. Write production-quality code using the project\'s existing style. Use the available tools to read, write, and test files.';
-      case 'tester':
-        return 'You are a testing agent. Write comprehensive tests for the implementation, run the test suite, and produce a structured test report with pass/fail counts and coverage information.';
-      case 'reviewer':
-        return 'You are a code review agent. Review the implementation for correctness, security, performance, and maintainability. Use create_review_comment for specific feedback. Produce a structured verdict with blocking issues and suggestions.';
+      case 'scout_bee':
+        return 'You are the Scout Bee. Analyze the task, inspect the codebase using available tools, and produce a detailed JSON implementation specification with subtasks, files to modify, success criteria, and risks.';
+      case 'worker_bee':
+        return 'You are the Worker Bee. Follow the Scout Bee specification exactly. Write production-quality code using the project\'s existing style. Use the available tools to read, write, and test files.';
+      case 'tester_bee':
+        return 'You are the Tester Bee. Write comprehensive tests for the implementation, run the test suite, and produce a structured test report with pass/fail counts and coverage information.';
+      case 'guard_bee':
+        return 'You are the Guard Bee. Review the implementation for correctness, security, performance, and maintainability. Use create_review_comment for specific feedback. Produce a structured verdict with blocking issues and suggestions.';
       default:
-        return `You are the ${agent} agent.`;
+        return `You are the ${agent} in the BeeBuilding hive.`;
+    }
+  }
+
+  private getBeeVerb(agent: AgentName): string {
+    switch (agent) {
+      case 'scout_bee':
+        return 'Scout Bee is mapping the workspace flora...';
+      case 'worker_bee':
+        return 'Worker Bee is constructing honeycomb cells...';
+      case 'tester_bee':
+        return 'Tester Bee is inspecting the honeycomb quality...';
+      case 'guard_bee':
+        return 'Guard Bee is patrolling the perimeter...';
+      default:
+        return `${agent} is buzzing into action...`;
     }
   }
 
   private async ensureClaudeClient(): Promise<void> {
     if (this.claudeClient) return;
 
-    log.info(TAG, 'Initializing Claude client');
+    log.info(TAG, 'Connecting to the hivemind API');
     let apiKey: string | undefined;
 
     try {
@@ -785,7 +801,7 @@ export class AgentOrchestrator extends EventEmitter<OrchestratorEvents> {
     }
 
     this.claudeClient = new ClaudeClient(apiKey);
-    log.info(TAG, 'Claude client initialized');
+    log.info(TAG, 'Hivemind API connected');
   }
 
   private async waitForGateApproval(): Promise<boolean> {
@@ -843,59 +859,59 @@ export class AgentOrchestrator extends EventEmitter<OrchestratorEvents> {
     }
 
     const strategy = this.sessionConfig.gitMergeStrategy;
-    log.info(TAG, `Merging with strategy: ${strategy}`);
+    log.info(TAG, `Sealing honeycomb with merge strategy: ${strategy}`);
 
     try {
       await this.worktreeManager.mergeWorktree(
-        'coder',
+        'worker_bee',
         this.sessionConfig.id,
         strategy,
       );
-      log.info(TAG, 'Merge completed');
+      log.info(TAG, 'Honeycomb sealed successfully');
     } catch (err) {
-      log.error(TAG, 'Merge failed', err);
+      log.error(TAG, 'Merge failed — honeycomb damaged', err);
       throw new Error(`Merge failed: ${err instanceof Error ? err.message : String(err)}`);
     }
 
-    for (const agent of ['planner', 'coder', 'tester', 'reviewer'] as AgentName[]) {
+    for (const agent of ['scout_bee', 'worker_bee', 'tester_bee', 'guard_bee'] as AgentName[]) {
       try {
         await this.worktreeManager.removeWorktree(agent);
-        log.debug(TAG, `Worktree cleaned up for ${agent}`);
+        log.debug(TAG, `Worktree chamber cleaned for ${agent}`);
       } catch (err) {
-        log.warn(TAG, `Failed to clean up worktree for ${agent}`, err);
+        log.warn(TAG, `Failed to clean worktree chamber for ${agent}`, err);
       }
     }
   }
 
   private async runDynamicPipeline(task: TaskDefinition, architecture: AgentArchitecture): Promise<void> {
-    log.info(TAG, `Starting dynamic pipeline for: "${task.title}" with ${architecture.agents.length} agents`);
+    log.info(TAG, `Dynamic swarm flow for: "${task.title}" with ${architecture.agents.length} bees`);
     await this.ensureClaudeClient();
 
     this.fsm.setTask(task);
     this.fsm.setStage('dynamic_group');
-    this.emitTimelineEvent('pipeline_started', null, 'dynamic_group', `Dynamic pipeline: ${task.title}`);
+    this.emitTimelineEvent('pipeline_started', null, 'dynamic_group', `Dynamic swarm flow: ${task.title}`);
 
     const agentMap = new Map(architecture.agents.map((a) => [a.id, a]));
     const totalGroups = architecture.executionOrder.length;
 
     for (let groupIdx = 0; groupIdx < totalGroups; groupIdx++) {
-      if (this.aborted) throw new Error('Pipeline aborted by user');
+      if (this.aborted) throw new Error('Swarm flow aborted by beekeeper');
 
       if (this.paused) {
         await this.waitForResume();
-        if (this.aborted) throw new Error('Pipeline aborted by user');
+        if (this.aborted) throw new Error('Swarm flow aborted by beekeeper');
       }
 
       const group = architecture.executionOrder[groupIdx];
       const isParallel = group.length > 1;
-      log.info(TAG, `=== Execution group ${groupIdx + 1}/${totalGroups}: [${group.join(', ')}] ${isParallel ? '(parallel)' : ''} ===`);
+      log.info(TAG, `=== Swarm group ${groupIdx + 1}/${totalGroups}: [${group.join(', ')}] ${isParallel ? '(parallel flight)' : ''} ===`);
 
       this.fsm.setStage('dynamic_group');
 
       const groupSpecs = group
         .map((id) => agentMap.get(id))
         .filter((s): s is AgentSpec => {
-          if (!s) log.warn(TAG, `Unknown agent id in executionOrder`);
+          if (!s) log.warn(TAG, `Unknown bee id in executionOrder`);
           return !!s;
         });
 
@@ -906,12 +922,12 @@ export class AgentOrchestrator extends EventEmitter<OrchestratorEvents> {
       const gateLevel = this.resolveGateForGroup(groupIdx, totalGroups, architecture);
 
       if (gateLevel === 'skip') {
-        log.debug(TAG, `Gate skip for group ${groupIdx}`);
-        this.emitTimelineEvent('gate_approved', null, 'dynamic_approval', `Gate auto-skipped for group ${groupIdx + 1}`);
+        log.debug(TAG, `Queen's Gate skip for group ${groupIdx}`);
+        this.emitTimelineEvent('gate_approved', null, 'dynamic_approval', `Queen's Gate auto-skipped for group ${groupIdx + 1}`);
         this.fsm.transition('approved');
       } else if (gateLevel === 'optional') {
-        log.debug(TAG, `Optional gate auto-approved for group ${groupIdx}`);
-        this.emitTimelineEvent('gate_approved', null, 'dynamic_approval', `Optional gate auto-approved for group ${groupIdx + 1}`);
+        log.debug(TAG, `Optional Queen's Gate auto-approved for group ${groupIdx}`);
+        this.emitTimelineEvent('gate_approved', null, 'dynamic_approval', `Optional Queen's Gate auto-approved for group ${groupIdx + 1}`);
         this.fsm.transition('approved');
       } else {
         const writerIds = groupSpecs.filter((s) => this.isWriterAgent(s)).map((s) => s.id);
@@ -929,24 +945,24 @@ export class AgentOrchestrator extends EventEmitter<OrchestratorEvents> {
 
         this.fsm.setGatePending(gatePending);
         this.emit('gatePending', gatePending);
-        this.emitTimelineEvent('gate_pending', null, 'dynamic_approval', `Awaiting approval after group ${groupIdx + 1}`);
+        this.emitTimelineEvent('gate_pending', null, 'dynamic_approval', `Awaiting beekeeper approval after group ${groupIdx + 1}`);
 
         const approved = await this.waitForGateApproval();
-        log.info(TAG, `Gate after group ${groupIdx + 1}: ${approved ? 'approved' : 'rejected'}`);
+        log.info(TAG, `Queen's Gate after group ${groupIdx + 1}: ${approved ? 'approved — bees proceed' : 'rejected — returning to cell'}`);
 
         if (approved) {
           this.fsm.transition('approved');
           this.emit('gateResolved', { stage: 'dynamic_approval', resolution: 'approved' });
-          this.emitTimelineEvent('gate_approved', null, 'dynamic_approval', `Group ${groupIdx + 1} approved`);
+          this.emitTimelineEvent('gate_approved', null, 'dynamic_approval', `Swarm group ${groupIdx + 1} approved`);
         } else {
-          if (this.aborted) throw new Error('Pipeline aborted by user');
+          if (this.aborted) throw new Error('Swarm flow aborted by beekeeper');
 
           this.emit('gateResolved', { stage: 'dynamic_approval', resolution: 'rejected' });
           this.emitTimelineEvent('gate_rejected', null, 'dynamic_approval',
-            `Group ${groupIdx + 1} rejected: ${this.rejectionFeedback || 'No feedback'}`);
+            `Swarm group ${groupIdx + 1} rejected: ${this.rejectionFeedback || 'No feedback'}`);
           this.fsm.transition('rejected');
 
-          log.info(TAG, `Re-running group ${groupIdx + 1} with rejection feedback`);
+          log.info(TAG, `Re-running swarm group ${groupIdx + 1} with rejection feedback`);
           for (const spec of groupSpecs) {
             this.fsm.updateAgentState(spec.id, { status: 'idle', progress: 0 });
           }
@@ -960,20 +976,20 @@ export class AgentOrchestrator extends EventEmitter<OrchestratorEvents> {
       if (groupIdx + 1 < totalGroups) {
         const nextGroup = architecture.executionOrder[groupIdx + 1];
         this.emitTimelineEvent('handoff', group.join(', '), 'dynamic_group',
-          `Handoff from [${group.join(', ')}] to [${nextGroup.join(', ')}]`);
+          `Pheromone handoff from [${group.join(', ')}] to [${nextGroup.join(', ')}]`);
       }
     }
 
-    log.info(TAG, 'All dynamic groups complete, beginning merge');
+    log.info(TAG, 'Dynamic swarm complete — sealing the honeycomb');
     this.fsm.setStage('merging');
-    this.emitTimelineEvent('merge_started', 'orchestrator', 'merging', 'Merging changes');
+    this.emitTimelineEvent('merge_started', 'queen_bee', 'merging', 'Queen Bee is sealing the honeycomb...');
 
     await this.performDynamicMerge(architecture);
     this.fsm.transition('merged');
 
-    this.emitTimelineEvent('merge_completed', 'orchestrator', 'done', 'Merge complete');
-    this.emitTimelineEvent('pipeline_completed', null, 'done', 'Dynamic pipeline completed');
-    log.info(TAG, 'Dynamic pipeline completed successfully');
+    this.emitTimelineEvent('merge_completed', 'queen_bee', 'done', 'Honeycomb sealed — merge complete');
+    this.emitTimelineEvent('pipeline_completed', null, 'done', 'Dynamic swarm flow complete — the hive prospers!');
+    log.info(TAG, 'Dynamic swarm flow completed successfully');
   }
 
   private async runDynamicGroup(
@@ -1044,7 +1060,7 @@ export class AgentOrchestrator extends EventEmitter<OrchestratorEvents> {
     groupIdx: number,
   ): Promise<void> {
     if (!this.claudeClient || !this.worktreeManager || !this.sessionConfig) {
-      throw new Error('Orchestrator not fully initialized');
+      throw new Error('Queen Bee not fully initialized');
     }
 
     let worktreePath: string;
@@ -1091,7 +1107,7 @@ export class AgentOrchestrator extends EventEmitter<OrchestratorEvents> {
     try {
       this.sessionManager.storeAgentOutput(this.sessionConfig.id, spec.id, output);
     } catch (err) {
-      log.error(TAG, `Failed to persist output for ${spec.id}`, err);
+      log.error(TAG, `Failed to persist nectar output for ${spec.id}`, err);
     }
   }
 
@@ -1297,7 +1313,7 @@ export class AgentOrchestrator extends EventEmitter<OrchestratorEvents> {
     try {
       this.timelineLog?.append(event);
     } catch (err) {
-      log.error(TAG, 'Failed to append timeline event', err);
+      log.error(TAG, 'Failed to append colony timeline event', err);
     }
     this.emit('timelineEvent', event);
   }

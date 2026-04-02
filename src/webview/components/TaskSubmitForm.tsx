@@ -43,7 +43,7 @@ export function TaskSubmitForm() {
         className="pixel-text"
         style={{ fontSize: 14, textAlign: 'center', marginBottom: 8, color: '#ffd54f' }}
       >
-        NEW MISSION
+        {'\uD83C\uDF3B'} NEW NECTAR RUN
       </div>
 
       <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
@@ -96,7 +96,7 @@ export function TaskSubmitForm() {
         disabled={!title.trim()}
         style={{ alignSelf: 'center', marginTop: 8 }}
       >
-        {'\u25B6'} START PIPELINE
+        {'\uD83D\uDC1D'} LAUNCH SWARM FLOW
       </button>
     </form>
   );

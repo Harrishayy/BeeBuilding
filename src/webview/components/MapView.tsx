@@ -1,27 +1,27 @@
 import { useMemo } from 'react';
 import { AgentStation } from './AgentStation';
-import { ConveyorBelt } from './ConveyorBelt';
+import { PollenPath } from './PollenPath';
 import { usePipelineStore } from '../state/pipelineStore';
 import type { AgentName, PipelineStage } from '../../shared/types';
 
 const STATIC_PIPELINE_ORDER: AgentName[] = [
-  'planner',
-  'coder',
-  'tester',
-  'reviewer',
-  'orchestrator',
+  'scout_bee',
+  'worker_bee',
+  'tester_bee',
+  'guard_bee',
+  'queen_bee',
 ];
 
 const STAGE_ACTIVE_AGENT: Partial<Record<PipelineStage, AgentName>> = {
-  planning: 'planner',
-  plan_approval: 'planner',
-  coding: 'coder',
-  code_approval: 'coder',
-  testing: 'tester',
-  test_approval: 'tester',
-  reviewing: 'reviewer',
-  review_approval: 'reviewer',
-  merging: 'orchestrator',
+  planning: 'scout_bee',
+  plan_approval: 'scout_bee',
+  coding: 'worker_bee',
+  code_approval: 'worker_bee',
+  testing: 'tester_bee',
+  test_approval: 'tester_bee',
+  reviewing: 'guard_bee',
+  review_approval: 'guard_bee',
+  merging: 'queen_bee',
 };
 
 function isBeltActiveStatic(stage: PipelineStage, fromIdx: number): boolean {
@@ -37,7 +37,7 @@ export function MapView() {
 
   const isDynamic = snapshot?.dynamicMode ?? false;
   const currentStage = snapshot?.stage ?? 'idle';
-  const taskName = snapshot?.task?.title ?? 'No active task';
+  const taskName = snapshot?.task?.title ?? 'No active nectar run';
 
   const agentOrder = useMemo<AgentName[]>(() => {
     if (!isDynamic) return STATIC_PIPELINE_ORDER;
@@ -84,23 +84,23 @@ export function MapView() {
       <div
         style={{
           padding: '8px 12px',
-          borderBottom: '3px solid #333',
+          borderBottom: '3px solid #FFA000',
           display: 'flex',
           alignItems: 'center',
           gap: 8,
           flexShrink: 0,
-          background: '#16213e',
+          background: '#111111',
         }}
       >
         <span
           className="pixel-text"
-          style={{ fontSize: 11, color: '#ffd54f' }}
+          style={{ fontSize: 11, color: '#FFB300' }}
         >
-          {'[=]'} AGENT FACTORY
+          {'\uD83D\uDC1D'} THE HIVE
         </span>
       </div>
 
-      {/* Factory floor */}
+      {/* Honeycomb floor */}
       <div
         style={{
           flex: 1,
@@ -113,14 +113,14 @@ export function MapView() {
           position: 'relative',
         }}
       >
-        {/* Isometric grid floor */}
+        {/* Hex grid background */}
         <div
           style={{
             position: 'absolute',
             inset: 0,
             background: `
-              linear-gradient(rgba(255,255,255,0.02) 1px, transparent 1px),
-              linear-gradient(90deg, rgba(255,255,255,0.02) 1px, transparent 1px)
+              linear-gradient(rgba(255,176,0,0.03) 1px, transparent 1px),
+              linear-gradient(90deg, rgba(255,176,0,0.03) 1px, transparent 1px)
             `,
             backgroundSize: '24px 24px',
             pointerEvents: 'none',
@@ -149,6 +149,7 @@ export function MapView() {
                 alignItems: 'center',
               }}
             >
+              {/* Honeycomb offset for hex feel */}
               <div
                 style={{
                   transform:
@@ -168,7 +169,7 @@ export function MapView() {
               </div>
 
               {showBelt && (
-                <ConveyorBelt
+                <PollenPath
                   active={beltActive}
                   direction="down"
                   length={32}
@@ -194,17 +195,17 @@ export function MapView() {
       <div
         style={{
           padding: '6px 12px',
-          borderTop: '3px solid #333',
+          borderTop: '3px solid #FFA000',
           display: 'flex',
           justifyContent: 'space-between',
           alignItems: 'center',
           flexShrink: 0,
-          background: '#16213e',
+          background: '#111111',
         }}
       >
         <span className="pixel-text" style={{ fontSize: 9, color: '#888' }}>
-          STAGE:{' '}
-          <span style={{ color: '#4fc3f7' }}>
+          SWARM:{' '}
+          <span style={{ color: '#FFB300' }}>
             {statusLabel}
           </span>
         </span>

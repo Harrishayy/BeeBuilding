@@ -47,8 +47,8 @@ export function PlanReviewView() {
         height: '100%',
       }}
     >
-      <div className="pixel-text" style={{ fontSize: 16, textAlign: 'center', color: '#ffd54f' }}>
-        PLAN REVIEW
+      <div className="pixel-text" style={{ fontSize: 16, textAlign: 'center', color: '#FFB300' }}>
+        {'\uD83D\uDD0D'} SCOUT REPORT
       </div>
 
       {/* Title & Summary */}
@@ -146,7 +146,7 @@ export function PlanReviewView() {
             {'\u270E'} REVISE
           </button>
           <button className="pixel-btn pixel-btn-primary" onClick={handleApprove}>
-            {'\u2714'} APPROVE PLAN
+            {'\u2714'} APPROVE FLIGHT PLAN
           </button>
         </div>
       )}

@@ -4,10 +4,10 @@ import { useVSCode } from '../hooks/useVSCode';
 import type { AppPhase } from '../../shared/types';
 
 const PHASES: { key: AppPhase; label: string }[] = [
-  { key: 'task', label: 'TASK' },
-  { key: 'planning', label: 'PLAN' },
+  { key: 'task', label: 'NECTAR' },
+  { key: 'planning', label: 'SCOUT' },
   { key: 'architecture', label: 'ARCH' },
-  { key: 'execution', label: 'EXEC' },
+  { key: 'execution', label: 'SWARM' },
 ];
 
 const PHASE_ORDER: AppPhase[] = ['settings', 'task', 'planning', 'plan_review', 'architecture', 'execution'];
@@ -69,14 +69,14 @@ export function HeaderBar() {
         display: 'flex',
         alignItems: 'center',
         padding: '10px 16px',
-        borderBottom: '3px solid #333',
-        background: '#12121e',
+        borderBottom: '3px solid #FFA000',
+        background: '#111111',
         gap: 12,
         minHeight: 44,
       }}
     >
       {/* Logo */}
-      <span className="pixel-text" style={{ fontSize: 16, color: '#ffd54f', marginRight: 8 }}>
+      <span className="pixel-text" style={{ fontSize: 16, color: '#FFB300', marginRight: 8 }}>
         {'\uD83D\uDC1D'} BB
       </span>
 
@@ -92,14 +92,14 @@ export function HeaderBar() {
           return (
             <div key={phase.key} style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
               {i > 0 && (
-                <span className="pixel-text" style={{ fontSize: 11, color: '#444' }}>{'\u25B8'}</span>
+                <span className="pixel-text" style={{ fontSize: 11, color: '#FFA000' }}>{'\u25B8'}</span>
               )}
               <span
                 className="pixel-text"
                 onClick={isClickable ? () => navigateToPhase(phase.key) : undefined}
                 style={{
                   fontSize: 11,
-                  color: isActive ? '#ffd54f' : isDone ? '#4caf50' : '#555',
+                  color: isActive ? '#FFB300' : isDone ? '#66bb6a' : '#555',
                   cursor: isClickable ? 'pointer' : 'default',
                 }}
               >
