@@ -26,10 +26,17 @@ export function usePipelineState(): void {
         if (!msg || typeof msg.type !== 'string') return;
 
         switch (msg.type) {
-          case 'pipelineState':
+          case 'pipelineState': {
             updateSnapshot(msg.payload);
-            if (msg.payload.stage !== 'idle') stopTransitionLoading();
+            if (msg.payload.stage !== 'idle') {
+              stopTransitionLoading();
+              const phase = usePipelineStore.getState().currentPhase;
+              if (phase === 'architecture' || phase === 'plan_review') {
+                setPhase('execution');
+              }
+            }
             break;
+          }
 
           case 'agentOutput':
             addAgentOutput(msg.payload.agent, msg.payload.chunk);

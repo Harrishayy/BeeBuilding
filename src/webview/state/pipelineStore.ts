@@ -69,6 +69,8 @@ interface PipelineStore {
   answerQuestion: (answer: string) => void;
   clearQuestions: () => void;
 
+  navigateToPhase: (phase: AppPhase) => void;
+
   addToast: (message: string, type: ToastData['type'], duration?: number) => void;
   removeToast: (id: string) => void;
 
@@ -162,6 +164,18 @@ export const usePipelineStore = create<PipelineStore>((set) => ({
 
   clearQuestions: () =>
     set({ pendingQuestions: [], questionAnswers: [], currentQuestionIndex: 0 }),
+
+  navigateToPhase: (phase) =>
+    set((state) => {
+      let targetPhase: AppPhase = phase;
+      if (phase === 'planning' && state.plan) {
+        targetPhase = 'plan_review';
+      }
+      return {
+        currentPhase: targetPhase,
+        previousPhase: null,
+      };
+    }),
 
   addToast: (message, type, duration) =>
     set((state) => ({

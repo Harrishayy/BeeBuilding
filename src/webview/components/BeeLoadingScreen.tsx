@@ -77,12 +77,12 @@ interface TreeData {
 }
 
 const TREES: TreeData[] = [
-  { x: 5, trunk: '#4a3728', leaf: '#2d5a27', leafLight: '#3d7a37', scale: 4, bottom: 48 },
-  { x: 20, trunk: '#5a4030', leaf: '#1d4a17', leafLight: '#2d6a27', scale: 3, bottom: 52 },
-  { x: 38, trunk: '#4a3728', leaf: '#2d6a2f', leafLight: '#4d8a47', scale: 5, bottom: 44 },
-  { x: 55, trunk: '#5a4030', leaf: '#1d5a20', leafLight: '#3d7a37', scale: 3, bottom: 50 },
-  { x: 72, trunk: '#4a3728', leaf: '#2d5a27', leafLight: '#3d7a37', scale: 4, bottom: 46 },
-  { x: 88, trunk: '#5a4030', leaf: '#1d4a17', leafLight: '#2d6a27', scale: 3, bottom: 54 },
+  { x: 5, trunk: '#4a3728', leaf: '#2d5a27', leafLight: '#3d7a37', scale: 7, bottom: 48 },
+  { x: 20, trunk: '#5a4030', leaf: '#1d4a17', leafLight: '#2d6a27', scale: 5, bottom: 52 },
+  { x: 38, trunk: '#4a3728', leaf: '#2d6a2f', leafLight: '#4d8a47', scale: 8, bottom: 44 },
+  { x: 55, trunk: '#5a4030', leaf: '#1d5a20', leafLight: '#3d7a37', scale: 5, bottom: 50 },
+  { x: 72, trunk: '#4a3728', leaf: '#2d5a27', leafLight: '#3d7a37', scale: 7, bottom: 46 },
+  { x: 88, trunk: '#5a4030', leaf: '#1d4a17', leafLight: '#2d6a27', scale: 6, bottom: 54 },
 ];
 
 function TreePixel({ tree }: { tree: TreeData }) {

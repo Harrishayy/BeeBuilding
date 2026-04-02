@@ -12,8 +12,14 @@ const PHASE_ORDER: AppPhase[] = ['settings', 'task', 'planning', 'plan_review', 
 
 export function HeaderBar() {
   const currentPhase = usePipelineStore((s) => s.currentPhase);
+  const previousPhase = usePipelineStore((s) => s.previousPhase);
   const openSettings = usePipelineStore((s) => s.openSettings);
-  const currentIdx = PHASE_ORDER.indexOf(currentPhase);
+  const navigateToPhase = usePipelineStore((s) => s.navigateToPhase);
+
+  const displayPhase = currentPhase === 'settings'
+    ? (previousPhase ?? 'task')
+    : currentPhase;
+  const currentIdx = PHASE_ORDER.indexOf(displayPhase);
 
   return (
     <div
@@ -36,9 +42,10 @@ export function HeaderBar() {
       <div style={{ display: 'flex', gap: 8, flex: 1, alignItems: 'center' }}>
         {PHASES.map((phase, i) => {
           const phaseIdx = PHASE_ORDER.indexOf(phase.key);
-          const isActive = phase.key === currentPhase ||
-            (phase.key === 'planning' && currentPhase === 'plan_review');
+          const isActive = phase.key === displayPhase ||
+            (phase.key === 'planning' && displayPhase === 'plan_review');
           const isDone = phaseIdx < currentIdx;
+          const isClickable = isDone && !isActive;
 
           return (
             <div key={phase.key} style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
@@ -47,10 +54,11 @@ export function HeaderBar() {
               )}
               <span
                 className="pixel-text"
+                onClick={isClickable ? () => navigateToPhase(phase.key) : undefined}
                 style={{
                   fontSize: 11,
                   color: isActive ? '#ffd54f' : isDone ? '#4caf50' : '#555',
-                  cursor: isDone ? 'pointer' : 'default',
+                  cursor: isClickable ? 'pointer' : 'default',
                 }}
               >
                 {isDone ? '\u2714 ' : ''}{phase.label}

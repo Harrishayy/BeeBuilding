@@ -369,9 +369,17 @@ async function handleWebviewMessage(message: WebviewMessage): Promise<void> {
       }
 
       case 'approvePlan': {
-        if (!currentPlan) return;
+        if (!currentPlan) {
+          log.error('Extension', 'approvePlan: no plan available');
+          broadcastAll({ type: 'error', payload: { message: 'No plan data available. Please regenerate.', recoverable: true } });
+          return;
+        }
         const apiKey = await keyStore.getApiKey();
-        if (!apiKey) return;
+        if (!apiKey) {
+          log.error('Extension', 'approvePlan: API key not configured');
+          broadcastAll({ type: 'error', payload: { message: 'API key not configured. Set it in Settings first.', recoverable: true } });
+          return;
+        }
         const model = vscode.workspace.getConfiguration('beebuilder').get<string>('defaultPlannerModel') ?? 'claude-sonnet-4-6';
         broadcastAll({ type: 'planningStatus', payload: { phase: 'generating_architecture' } });
 
@@ -414,10 +422,26 @@ async function handleWebviewMessage(message: WebviewMessage): Promise<void> {
       }
 
       case 'approveArchitecture': {
-        if (!currentPlan || !currentArchitecture) return;
+        if (!currentPlan || !currentArchitecture) {
+          log.error('Extension', `approveArchitecture: missing state (plan=${!!currentPlan}, arch=${!!currentArchitecture})`);
+          broadcastAll({ type: 'error', payload: { message: 'Plan or architecture data is missing. Please go back and regenerate.', recoverable: true } });
+          return;
+        }
+        if (!orchestrator) {
+          log.error('Extension', 'approveArchitecture: orchestrator not initialized');
+          broadcastAll({ type: 'error', payload: { message: 'Orchestrator not initialized', recoverable: true } });
+          return;
+        }
+        const apiKey = await keyStore.getApiKey();
+        if (!apiKey) {
+          log.error('Extension', 'approveArchitecture: API key not configured');
+          broadcastAll({ type: 'error', payload: { message: 'API key not configured. Set it in Settings first.', recoverable: true } });
+          return;
+        }
+        log.info('Extension', `Approving architecture: "${currentPlan.title}" with ${currentArchitecture.agents.length} agents`);
         broadcastAll({ type: 'planningStatus', payload: { phase: 'ready' } });
         trackPhase('execution');
-        orchestrator?.submitTaskWithArchitecture(
+        orchestrator.submitTaskWithArchitecture(
           {
             id: randomUUID(),
             title: currentPlan.title,

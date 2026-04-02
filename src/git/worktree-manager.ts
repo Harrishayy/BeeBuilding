@@ -1,3 +1,4 @@
+import * as fs from 'node:fs';
 import * as path from 'node:path';
 import simpleGit, { type SimpleGit } from 'simple-git';
 import { log } from '../util/logger.js';
@@ -34,8 +35,8 @@ export class WorktreeManager {
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
       if (message.includes('already exists')) {
-        log.warn(TAG, `Worktree/branch already exists for ${agentName}, recreating`);
-        await this.removeWorktree(agentName);
+        log.warn(TAG, `Worktree/branch already exists for ${agentName}, cleaning up stale resources`);
+        await this.forceCleanup(agentName, branchName, worktreePath);
         try {
           await this.git.raw([
             'worktree',
@@ -57,6 +58,40 @@ export class WorktreeManager {
 
     this.branches.set(agentName, branchName);
     return worktreePath;
+  }
+
+  private async forceCleanup(agentName: AgentName, branchName: string, worktreePath: string): Promise<void> {
+    try {
+      await this.git.raw(['worktree', 'remove', worktreePath, '--force']);
+      log.debug(TAG, `Force-removed worktree via git: ${worktreePath}`);
+    } catch {
+      log.debug(TAG, `git worktree remove failed, will try filesystem cleanup: ${worktreePath}`);
+    }
+
+    if (fs.existsSync(worktreePath)) {
+      try {
+        fs.rmSync(worktreePath, { recursive: true, force: true });
+        log.debug(TAG, `Removed stale worktree directory from filesystem: ${worktreePath}`);
+      } catch (err) {
+        log.warn(TAG, `Failed to remove worktree directory: ${worktreePath}`, err);
+      }
+    }
+
+    try {
+      await this.git.raw(['worktree', 'prune']);
+      log.debug(TAG, 'Pruned stale worktree references');
+    } catch {
+      log.debug(TAG, 'Worktree prune skipped');
+    }
+
+    try {
+      await this.git.branch(['-D', branchName]);
+      log.debug(TAG, `Force-deleted stale branch: ${branchName}`);
+    } catch {
+      log.debug(TAG, `Branch ${branchName} not found or already deleted`);
+    }
+
+    this.branches.delete(agentName);
   }
 
   async removeWorktree(agentName: AgentName): Promise<void> {
