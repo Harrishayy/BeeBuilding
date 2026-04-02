@@ -25,14 +25,14 @@ function getWebviewHtml(webview: vscode.Webview, extensionUri: vscode.Uri): stri
                  img-src ${webview.cspSource} data:;">
   <link href="https://fonts.googleapis.com/css2?family=Press+Start+2P&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="${styleUri}">
-  <title>AgentFlow Mission Control</title>
+  <title>BeeBuilder Mission Control</title>
 </head>
 <body style="margin: 0; padding: 0; background: #1a1a2e;">
-  <div id="root"><p style="color:#ffd54f;padding:20px;font-family:monospace;font-size:12px;">Loading AgentFlow...</p></div>
+  <div id="root"><p style="color:#ffd54f;padding:20px;font-family:monospace;font-size:12px;">Loading BeeBuilder...</p></div>
   <script nonce="${nonce}">
     window.onerror = function(msg, src, line, col, err) {
       var el = document.getElementById('root') || document.body;
-      el.innerHTML = '<pre style="color:#ef5350;background:#0a0a14;padding:20px;margin:10px;font-size:11px;white-space:pre-wrap;word-break:break-word;font-family:monospace;border:2px solid #ef5350;">[AgentFlow Error]\\n' + (err ? err.message + '\\n\\n' + err.stack : msg) + '</pre>';
+      el.innerHTML = '<pre style="color:#ef5350;background:#0a0a14;padding:20px;margin:10px;font-size:11px;white-space:pre-wrap;word-break:break-word;font-family:monospace;border:2px solid #ef5350;">[BeeBuilder Error]\\n' + (err ? err.message + '\\n\\n' + err.stack : msg) + '</pre>';
     };
   </script>
   <script nonce="${nonce}" src="${scriptUri}"></script>
@@ -52,7 +52,7 @@ function getNonce(): string {
 // ─── Sidebar view (WebviewViewProvider) ──────────────────────────────
 
 export class AgentFlowSidebarProvider implements vscode.WebviewViewProvider {
-  public static readonly viewType = 'agentflow.missionControl';
+  public static readonly viewType = 'beebuilder.missionControl';
 
   private _view?: vscode.WebviewView;
   private _onMessage: (message: WebviewMessage) => void;
@@ -98,7 +98,7 @@ export class AgentFlowSidebarProvider implements vscode.WebviewViewProvider {
 // ─── Editor panel (WebviewPanel) ────────────────────────────────────
 
 export class AgentFlowPanel {
-  public static readonly viewType = 'agentflow.panel';
+  public static readonly viewType = 'beebuilder.panel';
 
   private static _instance: AgentFlowPanel | undefined;
   private readonly _panel: vscode.WebviewPanel;
@@ -137,7 +137,7 @@ export class AgentFlowPanel {
 
     const panel = vscode.window.createWebviewPanel(
       AgentFlowPanel.viewType,
-      'AgentFlow — Mission Control',
+      'BeeBuilder — Mission Control',
       vscode.ViewColumn.One,
       {
         enableScripts: true,

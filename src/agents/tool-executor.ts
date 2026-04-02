@@ -2,8 +2,10 @@ import * as fs from 'node:fs';
 import * as path from 'node:path';
 import { exec } from 'node:child_process';
 import { promisify } from 'node:util';
+import { log } from '../util/logger.js';
 
 const execAsync = promisify(exec);
+const TAG = 'ToolExecutor';
 
 interface ReviewComment {
   file: string;
@@ -15,32 +17,54 @@ interface ReviewComment {
 export class ToolExecutor {
   private reviewComments: ReviewComment[] = [];
 
-  constructor(private readonly worktreePath: string) {}
+  constructor(private readonly worktreePath: string) {
+    log.debug(TAG, `Initialized with worktree: ${worktreePath}`);
+  }
 
   async execute(toolName: string, input: Record<string, unknown>): Promise<string> {
-    switch (toolName) {
-      case 'read_file':
-        return this.readFile(input.path as string);
-      case 'write_file':
-        return this.writeFile(input.path as string, input.content as string);
-      case 'run_command':
-        return this.runCommand(input.command as string);
-      case 'search_codebase':
-        return this.searchCodebase(
-          input.query as string,
-          input.file_pattern as string | undefined,
-        );
-      case 'list_files':
-        return this.listFiles((input.directory as string | undefined) ?? '.');
-      case 'create_review_comment':
-        return this.createReviewComment(
-          input.file as string,
-          input.line as number,
-          input.comment as string,
-          input.severity as string,
-        );
-      default:
-        throw new Error(`Unknown tool: ${toolName}`);
+    log.debug(TAG, `execute: ${toolName}`, input);
+    const start = Date.now();
+
+    try {
+      let result: string;
+      switch (toolName) {
+        case 'read_file':
+          result = await this.readFile(input.path as string);
+          break;
+        case 'write_file':
+          result = await this.writeFile(input.path as string, input.content as string);
+          break;
+        case 'run_command':
+          result = await this.runCommand(input.command as string);
+          break;
+        case 'search_codebase':
+          result = await this.searchCodebase(
+            input.query as string,
+            input.file_pattern as string | undefined,
+          );
+          break;
+        case 'list_files':
+          result = await this.listFiles((input.directory as string | undefined) ?? '.');
+          break;
+        case 'create_review_comment':
+          result = this.createReviewComment(
+            input.file as string,
+            input.line as number,
+            input.comment as string,
+            input.severity as string,
+          );
+          break;
+        default:
+          throw new Error(`Unknown tool: ${toolName}`);
+      }
+
+      const elapsed = Date.now() - start;
+      log.debug(TAG, `${toolName} completed in ${elapsed}ms (${result.length} chars)`);
+      return result;
+    } catch (err) {
+      const elapsed = Date.now() - start;
+      log.error(TAG, `${toolName} failed after ${elapsed}ms`, err);
+      throw err;
     }
   }
 
@@ -69,6 +93,7 @@ export class ToolExecutor {
 
     try {
       const content = await fs.promises.readFile(resolved, 'utf-8');
+      log.debug(TAG, `read_file: ${filePath} (${content.length} chars)`);
       return content;
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
@@ -82,6 +107,7 @@ export class ToolExecutor {
     try {
       await fs.promises.mkdir(path.dirname(resolved), { recursive: true });
       await fs.promises.writeFile(resolved, content, 'utf-8');
+      log.debug(TAG, `write_file: ${filePath} (${content.length} chars written)`);
       return `Successfully wrote ${content.length} characters to ${filePath}`;
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
@@ -90,6 +116,7 @@ export class ToolExecutor {
   }
 
   private async runCommand(command: string): Promise<string> {
+    log.debug(TAG, `run_command: ${command}`);
     try {
       const { stdout, stderr } = await execAsync(command, {
         cwd: this.worktreePath,
@@ -113,6 +140,7 @@ export class ToolExecutor {
       if (execErr.stdout) result += execErr.stdout;
       if (execErr.stderr) result += `\n[stderr]:\n${execErr.stderr}`;
       if (!result) result = `Command failed: ${execErr.message}`;
+      log.warn(TAG, `run_command exited with code ${execErr.code ?? 1}`);
       return `[exit code: ${execErr.code ?? 1}]\n${result}`;
     }
   }
@@ -121,6 +149,7 @@ export class ToolExecutor {
     query: string,
     filePattern: string | undefined,
   ): Promise<string> {
+    log.debug(TAG, `search_codebase: query="${query}" pattern="${filePattern ?? '*'}"`);
     const args = ['rg', '--no-heading', '--line-number', '--color', 'never'];
     if (filePattern) {
       args.push('-g', filePattern);
@@ -139,6 +168,7 @@ export class ToolExecutor {
       if (execErr.code === 1) {
         return 'No matches found.';
       }
+      log.warn(TAG, 'rg not available, falling back to grep');
       try {
         const grepArgs = ['grep', '-rn', '--include', filePattern ?? '*', query, '.'];
         const { stdout } = await execAsync(grepArgs.join(' '), {
@@ -158,7 +188,7 @@ export class ToolExecutor {
 
     try {
       const { stdout } = await execAsync(
-        'find . -type f -not -path "*/node_modules/*" -not -path "*/.git/*" -not -path "*/.agentflow/*" | sort',
+        'find . -type f -not -path "*/node_modules/*" -not -path "*/.git/*" -not -path "*/.beebuilder/*" | sort',
         {
           cwd: resolved,
           timeout: 15_000,
@@ -180,12 +210,17 @@ export class ToolExecutor {
   ): string {
     const entry: ReviewComment = { file, line, comment, severity };
     this.reviewComments.push(entry);
+    log.debug(TAG, `Review comment: [${severity}] ${file}:${line}`);
 
-    const reviewDir = path.join(this.worktreePath, '.agentflow', 'reviews');
-    fs.mkdirSync(reviewDir, { recursive: true });
+    try {
+      const reviewDir = path.join(this.worktreePath, '.beebuilder', 'reviews');
+      fs.mkdirSync(reviewDir, { recursive: true });
 
-    const reviewPath = path.join(reviewDir, 'comments.json');
-    fs.writeFileSync(reviewPath, JSON.stringify(this.reviewComments, null, 2), 'utf-8');
+      const reviewPath = path.join(reviewDir, 'comments.json');
+      fs.writeFileSync(reviewPath, JSON.stringify(this.reviewComments, null, 2), 'utf-8');
+    } catch (err) {
+      log.error(TAG, 'Failed to persist review comment', err);
+    }
 
     return `Review comment added: [${severity}] ${file}:${line} — ${comment}`;
   }

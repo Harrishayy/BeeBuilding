@@ -1,3 +1,4 @@
+import { ErrorBoundary } from './components/ErrorBoundary';
 import { MapView } from './components/MapView';
 import { AgentDetailView } from './components/AgentDetailView';
 import { TaskSubmitForm } from './components/TaskSubmitForm';
@@ -17,49 +18,61 @@ export function App() {
   const hasGate = snapshot?.currentGate != null;
 
   return (
-    <div
-      style={{
-        display: 'flex',
-        height: '100vh',
-        width: '100%',
-        background: '#1a1a2e',
-        fontFamily: 'var(--font-pixel)',
-        position: 'relative',
-      }}
-    >
-      {/* Main panel */}
+    <ErrorBoundary>
       <div
         style={{
-          flex: 1,
           display: 'flex',
-          flexDirection: 'column',
-          minWidth: 0,
+          height: '100vh',
+          width: '100%',
+          background: '#1a1a2e',
+          fontFamily: 'var(--font-pixel)',
+          position: 'relative',
         }}
       >
-        {isIdle ? (
-          <div
-            style={{
-              flex: 1,
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              padding: 16,
-            }}
-          >
-            <TaskSubmitForm />
-          </div>
-        ) : currentView === 'map' ? (
-          <MapView />
-        ) : (
-          <AgentDetailView />
+        {/* Main panel */}
+        <div
+          style={{
+            flex: 1,
+            display: 'flex',
+            flexDirection: 'column',
+            minWidth: 0,
+          }}
+        >
+          <ErrorBoundary>
+            {isIdle ? (
+              <div
+                style={{
+                  flex: 1,
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  padding: 16,
+                }}
+              >
+                <TaskSubmitForm />
+              </div>
+            ) : currentView === 'map' ? (
+              <MapView />
+            ) : (
+              <AgentDetailView />
+            )}
+          </ErrorBoundary>
+        </div>
+
+        {/* Timeline sidebar */}
+        {!isIdle && (
+          <ErrorBoundary>
+            <Timeline events={timelineEvents} />
+          </ErrorBoundary>
+        )}
+
+        {/* Gate modal overlay */}
+        {hasGate && currentView === 'map' && (
+          <ErrorBoundary>
+            <ApprovalGateModal />
+          </ErrorBoundary>
         )}
       </div>
-
-      {/* Timeline sidebar */}
-      {!isIdle && <Timeline events={timelineEvents} />}
-
-      {/* Gate modal overlay */}
-      {hasGate && currentView === 'map' && <ApprovalGateModal />}
-    </div>
+    </ErrorBoundary>
   );
 }

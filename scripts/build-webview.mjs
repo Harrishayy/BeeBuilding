@@ -10,7 +10,8 @@ const buildOptions = {
   platform: 'browser',
   target: 'es2022',
   sourcemap: true,
-  minify: !watch,
+  minify: false,
+  jsx: 'automatic',
   loader: {
     '.css': 'css',
     '.png': 'file',

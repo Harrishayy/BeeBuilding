@@ -1,5 +1,8 @@
 import Anthropic from '@anthropic-ai/sdk';
+import { log } from '../util/logger.js';
 import type { ToolDefinition } from './tools.js';
+
+const TAG = 'ClaudeClient';
 
 export interface AgentMessageParams {
   model: string;
@@ -15,9 +18,12 @@ export class ClaudeClient {
 
   constructor(apiKey: string) {
     this.client = new Anthropic({ apiKey });
+    log.info(TAG, 'Claude client created');
   }
 
   async createAgentMessage(params: AgentMessageParams): Promise<string> {
+    log.info(TAG, `Creating agent message (model=${params.model}, tools=${params.tools.length})`);
+
     const internalMessages: Anthropic.MessageParam[] = params.messages.map((m) => ({
       role: m.role,
       content: m.content,
@@ -34,24 +40,57 @@ export class ClaudeClient {
     }));
 
     let fullText = '';
+    let turnCount = 0;
+    const maxTurns = 50;
 
     for (;;) {
-      const stream = this.client.messages.stream({
-        model: params.model,
-        system: params.systemPrompt,
-        messages: internalMessages,
-        tools,
-        max_tokens: 8192,
-      });
+      turnCount++;
+      if (turnCount > maxTurns) {
+        log.warn(TAG, `Agent exceeded ${maxTurns} turns, forcing stop`);
+        break;
+      }
 
-      stream.on('text', (text) => {
-        fullText += text;
-        params.onChunk(text);
-      });
+      log.debug(TAG, `Turn ${turnCount}: sending request (${internalMessages.length} messages)`);
 
-      const response = await stream.finalMessage();
+      let response: Anthropic.Message;
+      try {
+        const stream = this.client.messages.stream({
+          model: params.model,
+          system: params.systemPrompt,
+          messages: internalMessages,
+          tools,
+          max_tokens: 8192,
+        });
+
+        stream.on('text', (text) => {
+          fullText += text;
+          params.onChunk(text);
+        });
+
+        response = await stream.finalMessage();
+        log.debug(TAG, `Turn ${turnCount} complete: stop_reason=${response.stop_reason}, usage=${JSON.stringify(response.usage)}`);
+      } catch (err) {
+        if (err instanceof Anthropic.APIError) {
+          log.error(TAG, `API error: status=${err.status} type=${err.error?.type ?? 'unknown'}`, err);
+          if (err.status === 429) {
+            log.warn(TAG, 'Rate limited, waiting 10s before retry');
+            await new Promise((r) => setTimeout(r, 10_000));
+            turnCount--;
+            continue;
+          }
+          if (err.status === 529) {
+            log.warn(TAG, 'API overloaded, waiting 30s before retry');
+            await new Promise((r) => setTimeout(r, 30_000));
+            turnCount--;
+            continue;
+          }
+        }
+        log.error(TAG, 'Unrecoverable API error', err);
+        throw err;
+      }
 
       if (response.stop_reason !== 'tool_use') {
+        log.info(TAG, `Agent finished after ${turnCount} turns (${fullText.length} chars total)`);
         return fullText;
       }
 
@@ -61,6 +100,7 @@ export class ClaudeClient {
 
       for (const block of response.content) {
         if (block.type === 'tool_use') {
+          log.debug(TAG, `Tool use: ${block.name} (id=${block.id})`);
           try {
             const result = await params.onToolUse(
               block.name,
@@ -73,6 +113,7 @@ export class ClaudeClient {
             });
           } catch (err) {
             const errorMsg = err instanceof Error ? err.message : String(err);
+            log.error(TAG, `Tool "${block.name}" execution failed: ${errorMsg}`);
             toolResultBlocks.push({
               type: 'tool_result',
               tool_use_id: block.id,
@@ -85,5 +126,7 @@ export class ClaudeClient {
 
       internalMessages.push({ role: 'user', content: toolResultBlocks });
     }
+
+    return fullText;
   }
 }

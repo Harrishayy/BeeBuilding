@@ -1,6 +1,6 @@
 {
-  "name": "agentflow",
-  "displayName": "AgentFlow",
+  "name": "beebuilder",
+  "displayName": "BeeBuilder",
   "description": "Real-time multi-agent software factory for VS Code / Cursor",
   "version": "0.1.0",
   "publisher": "beebuilding",
@@ -12,51 +12,94 @@
     "Other"
   ],
   "activationEvents": [
-    "onCommand:agentflow.open",
+    "onCommand:beebuilder.open",
+    "onView:beebuilder.missionControl",
     "onStartupFinished"
   ],
   "main": "./dist/extension.js",
   "contributes": {
+    "viewsContainers": {
+      "activitybar": [
+        {
+          "id": "beebuilder",
+          "title": "BeeBuilder",
+          "icon": "resources/icon.svg"
+        }
+      ]
+    },
+    "views": {
+      "beebuilder": [
+        {
+          "type": "webview",
+          "id": "beebuilder.missionControl",
+          "name": "Mission Control"
+        }
+      ]
+    },
     "commands": [
       {
-        "command": "agentflow.open",
-        "title": "AgentFlow: Open Mission Control"
+        "command": "beebuilder.open",
+        "title": "BeeBuilder: Open",
+        "icon": "resources/icon.svg"
       },
       {
-        "command": "agentflow.createSession",
-        "title": "AgentFlow: Create Session"
+        "command": "beebuilder.createSession",
+        "title": "BeeBuilder: Create Session"
       },
       {
-        "command": "agentflow.submitTask",
-        "title": "AgentFlow: Submit Task"
+        "command": "beebuilder.submitTask",
+        "title": "BeeBuilder: Submit Task"
       },
       {
-        "command": "agentflow.approveGate",
-        "title": "AgentFlow: Approve Gate"
+        "command": "beebuilder.approveGate",
+        "title": "BeeBuilder: Approve Gate"
       },
       {
-        "command": "agentflow.rejectGate",
-        "title": "AgentFlow: Request Changes"
+        "command": "beebuilder.rejectGate",
+        "title": "BeeBuilder: Request Changes"
       },
       {
-        "command": "agentflow.pausePipeline",
-        "title": "AgentFlow: Pause Pipeline"
+        "command": "beebuilder.pausePipeline",
+        "title": "BeeBuilder: Pause Pipeline"
       },
       {
-        "command": "agentflow.abortTask",
-        "title": "AgentFlow: Abort Task"
+        "command": "beebuilder.abortTask",
+        "title": "BeeBuilder: Abort Task"
+      },
+      {
+        "command": "beebuilder.showLog",
+        "title": "BeeBuilder: Show Output Log"
       }
     ],
+    "menus": {
+      "editor/title": [
+        {
+          "command": "beebuilder.open",
+          "group": "navigation"
+        }
+      ],
+      "editor/title/context": [
+        {
+          "command": "beebuilder.open"
+        }
+      ],
+      "commandPalette": [
+        {
+          "command": "beebuilder.open",
+          "title": "BeeBuilder: Open"
+        }
+      ]
+    },
     "configuration": {
-      "title": "AgentFlow",
+      "title": "BeeBuilder",
       "properties": {
-        "agentflow.claudeApiKey": {
+        "beebuilder.claudeApiKey": {
           "type": "string",
           "default": "",
           "description": "Anthropic API key (prefer using SecretStorage instead)",
           "scope": "application"
         },
-        "agentflow.defaultPlannerModel": {
+        "beebuilder.defaultPlannerModel": {
           "type": "string",
           "default": "claude-opus-4-6",
           "enum": [
@@ -65,7 +108,7 @@
           ],
           "description": "Model for the Planner and Reviewer agents"
         },
-        "agentflow.defaultCoderModel": {
+        "beebuilder.defaultCoderModel": {
           "type": "string",
           "default": "claude-sonnet-4-6",
           "enum": [
@@ -74,12 +117,12 @@
           ],
           "description": "Model for the Coder and Tester agents"
         },
-        "agentflow.timeoutMinutes": {
+        "beebuilder.timeoutMinutes": {
           "type": "number",
           "default": 30,
           "description": "Maximum minutes per agent before timeout escalation"
         },
-        "agentflow.gitMergeStrategy": {
+        "beebuilder.gitMergeStrategy": {
           "type": "string",
           "default": "squash",
           "enum": [

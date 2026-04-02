@@ -11,53 +11,67 @@ export function usePipelineState(): void {
 
   useEffect(() => {
     function handleMessage(event: MessageEvent) {
-      const msg = event.data as ExtensionMessage;
-      if (!msg || typeof msg.type !== 'string') return;
-
-      switch (msg.type) {
-        case 'pipelineState':
-          updateSnapshot(msg.payload);
-          break;
-
-        case 'agentOutput':
-          addAgentOutput(msg.payload.agent, msg.payload.chunk);
-          break;
-
-        case 'timelineEvent':
-          addTimelineEvent(msg.payload);
-          break;
-
-        case 'gatePending': {
-          const snap = usePipelineStore.getState().snapshot;
-          if (snap) {
-            updateSnapshot({ ...snap, currentGate: msg.payload });
-          }
-          break;
+      try {
+        const msg = event.data as ExtensionMessage;
+        if (!msg || typeof msg.type !== 'string') {
+          console.warn('[BeeBuilder] Received invalid message:', event.data);
+          return;
         }
 
-        case 'gateResolved': {
-          const snap = usePipelineStore.getState().snapshot;
-          if (snap) {
-            updateSnapshot({ ...snap, currentGate: null });
-          }
-          break;
-        }
+        console.debug(`[BeeBuilder] Message received: ${msg.type}`);
 
-        case 'error': {
-          const snap = usePipelineStore.getState().snapshot;
-          if (snap) {
-            updateSnapshot({ ...snap, error: msg.payload.message });
-          }
-          break;
-        }
+        switch (msg.type) {
+          case 'pipelineState':
+            updateSnapshot(msg.payload);
+            break;
 
-        case 'sessionLoaded':
-          vscode.postMessage({ type: 'requestState' });
-          break;
+          case 'agentOutput':
+            addAgentOutput(msg.payload.agent, msg.payload.chunk);
+            break;
+
+          case 'timelineEvent':
+            addTimelineEvent(msg.payload);
+            break;
+
+          case 'gatePending': {
+            const snap = usePipelineStore.getState().snapshot;
+            if (snap) {
+              updateSnapshot({ ...snap, currentGate: msg.payload });
+            }
+            break;
+          }
+
+          case 'gateResolved': {
+            const snap = usePipelineStore.getState().snapshot;
+            if (snap) {
+              updateSnapshot({ ...snap, currentGate: null });
+            }
+            break;
+          }
+
+          case 'error': {
+            console.error(`[BeeBuilder] Extension error: ${msg.payload.message} (recoverable: ${msg.payload.recoverable})`);
+            const snap = usePipelineStore.getState().snapshot;
+            if (snap) {
+              updateSnapshot({ ...snap, error: msg.payload.message });
+            }
+            break;
+          }
+
+          case 'sessionLoaded':
+            vscode.postMessage({ type: 'requestState' });
+            break;
+
+          default:
+            console.warn(`[BeeBuilder] Unknown message type: ${(msg as { type: string }).type}`);
+        }
+      } catch (err) {
+        console.error('[BeeBuilder] Error handling message:', err);
       }
     }
 
     window.addEventListener('message', handleMessage);
+    console.debug('[BeeBuilder] Message listener attached, requesting initial state');
     vscode.postMessage({ type: 'requestState' });
 
     return () => window.removeEventListener('message', handleMessage);

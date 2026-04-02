@@ -20,7 +20,10 @@ import { ClaudeClient } from './claude-client.js';
 import { ToolExecutor } from './tool-executor.js';
 import { plannerTools, coderTools, testerTools, reviewerTools, type ToolDefinition } from './tools.js';
 import { parseAgentsConfig } from '../config/agents-parser.js';
+import { log } from '../util/logger.js';
 import type { SessionConfig } from '../shared/types.js';
+
+const TAG = 'Orchestrator';
 
 interface OrchestratorEvents {
   stateChange: (snapshot: PipelineSnapshot) => void;
@@ -95,50 +98,109 @@ export class AgentOrchestrator extends EventEmitter<OrchestratorEvents> {
 
   constructor(private readonly context: vscode.ExtensionContext) {
     super();
+    log.info(TAG, 'Initializing orchestrator');
 
     const storagePath = context.globalStorageUri.fsPath;
-    fs.mkdirSync(storagePath, { recursive: true });
+    try {
+      fs.mkdirSync(storagePath, { recursive: true });
+      log.debug(TAG, `Storage path: ${storagePath}`);
+    } catch (err) {
+      log.error(TAG, 'Failed to create storage directory', err);
+      throw err;
+    }
 
     const dbPath = path.join(storagePath, 'agentflow.db');
-    this.sessionManager = new SessionManager(dbPath);
+    try {
+      this.sessionManager = new SessionManager(dbPath);
+      log.info(TAG, 'Session manager initialized');
+    } catch (err) {
+      log.error(TAG, 'Failed to initialize session manager', err);
+      throw err;
+    }
 
     this.fsm = new PipelineFSM();
     this.fsm.on('stateChange', (snapshot) => {
+      log.debug(TAG, `FSM state change: ${snapshot.stage}`);
       this.emit('stateChange', snapshot);
       if (this.sessionConfig) {
-        this.sessionManager.updatePipelineState(
-          this.sessionConfig.id,
-          snapshot.stage,
-          JSON.stringify(snapshot),
-        );
+        try {
+          this.sessionManager.updatePipelineState(
+            this.sessionConfig.id,
+            snapshot.stage,
+            JSON.stringify(snapshot),
+          );
+        } catch (err) {
+          log.error(TAG, 'Failed to persist pipeline state', err);
+        }
       }
     });
+
+    log.info(TAG, 'Orchestrator initialized');
   }
 
   createSession(): void {
+    log.info(TAG, 'Creating new session');
     const workspaceFolders = vscode.workspace.workspaceFolders;
     if (!workspaceFolders || workspaceFolders.length === 0) {
+      log.warn(TAG, 'No workspace folder open');
       this.emit('error', { message: 'No workspace folder open', recoverable: true });
       return;
     }
 
     const projectPath = workspaceFolders[0].uri.fsPath;
-    const config = parseAgentsConfig(projectPath);
+    log.info(TAG, `Project path: ${projectPath}`);
+
+    let config: SessionConfig;
+    try {
+      config = parseAgentsConfig(projectPath);
+      log.info(TAG, `Session config parsed, id=${config.id}`, {
+        agents: Object.keys(config.agents),
+        gates: config.gates,
+        gitMergeStrategy: config.gitMergeStrategy,
+      });
+    } catch (err) {
+      log.error(TAG, 'Failed to parse AGENTS.md config', err);
+      this.emit('error', {
+        message: `Failed to parse config: ${err instanceof Error ? err.message : String(err)}`,
+        recoverable: true,
+      });
+      return;
+    }
 
     this.sessionConfig = config;
-    this.sessionManager.createSession(config);
+
+    try {
+      this.sessionManager.createSession(config);
+    } catch (err) {
+      log.error(TAG, 'Failed to persist session', err);
+    }
 
     this.fsm.setSessionId(config.id);
     this.fsm.setGateConfig(config.gates);
 
-    this.worktreeManager = new WorktreeManager(projectPath);
+    try {
+      this.worktreeManager = new WorktreeManager(projectPath);
+      log.info(TAG, 'Worktree manager initialized');
+    } catch (err) {
+      log.error(TAG, 'Failed to initialize worktree manager', err);
+      this.emit('error', {
+        message: `Git worktree init failed: ${err instanceof Error ? err.message : String(err)}`,
+        recoverable: false,
+      });
+      return;
+    }
 
     const logPath = path.join(
       this.context.globalStorageUri.fsPath,
       'timelines',
       `${config.id}.jsonl`,
     );
-    this.timelineLog = new TimelineLog(logPath);
+    try {
+      this.timelineLog = new TimelineLog(logPath);
+      log.debug(TAG, `Timeline log: ${logPath}`);
+    } catch (err) {
+      log.error(TAG, 'Failed to create timeline log', err);
+    }
 
     this.agentOutputs.clear();
     this.paused = false;
@@ -146,15 +208,20 @@ export class AgentOrchestrator extends EventEmitter<OrchestratorEvents> {
     this.rejectionFeedback = '';
 
     this.emitTimelineEvent('pipeline_started', null, 'idle', 'Session created');
+    log.info(TAG, `Session created: ${config.id}`);
   }
 
   async submitTask(task: TaskDefinition): Promise<void> {
+    log.info(TAG, `Task submitted: "${task.title}" (priority=${task.priority}, id=${task.id})`);
+
     if (!this.sessionConfig) {
+      log.info(TAG, 'No session exists, creating one');
       this.createSession();
     }
 
     this.runPipeline(task).catch((err: unknown) => {
       const message = err instanceof Error ? err.message : String(err);
+      log.error(TAG, `Pipeline failed: ${message}`, err);
       this.fsm.setError(message);
       this.fsm.transition('error');
       this.emitTimelineEvent('pipeline_failed', null, this.fsm.getStage(), message);
@@ -163,24 +230,31 @@ export class AgentOrchestrator extends EventEmitter<OrchestratorEvents> {
   }
 
   approveCurrentGate(): void {
+    log.info(TAG, 'Gate approved by user');
     if (this.gateResolve) {
       const resolve = this.gateResolve;
       this.gateResolve = null;
       resolve(true);
+    } else {
+      log.warn(TAG, 'approveCurrentGate called but no gate is pending');
     }
   }
 
   rejectCurrentGate(feedback: string): void {
+    log.info(TAG, `Gate rejected by user: "${feedback}"`);
     this.rejectionFeedback = feedback;
     if (this.gateResolve) {
       const resolve = this.gateResolve;
       this.gateResolve = null;
       resolve(false);
+    } else {
+      log.warn(TAG, 'rejectCurrentGate called but no gate is pending');
     }
   }
 
   pause(): void {
     this.paused = !this.paused;
+    log.info(TAG, `Pipeline ${this.paused ? 'paused' : 'resumed'}`);
     if (!this.paused && this.pauseResolve) {
       const resolve = this.pauseResolve;
       this.pauseResolve = null;
@@ -189,6 +263,7 @@ export class AgentOrchestrator extends EventEmitter<OrchestratorEvents> {
   }
 
   abort(): void {
+    log.info(TAG, 'Pipeline abort requested');
     this.aborted = true;
 
     if (this.gateResolve) {
@@ -205,11 +280,16 @@ export class AgentOrchestrator extends EventEmitter<OrchestratorEvents> {
   }
 
   getDiffForAgent(agent: AgentName): void {
-    if (!this.worktreeManager || !this.sessionConfig) return;
+    if (!this.worktreeManager || !this.sessionConfig) {
+      log.warn(TAG, `getDiffForAgent(${agent}) called but no worktree/session`);
+      return;
+    }
 
+    log.debug(TAG, `Fetching diff for agent: ${agent}`);
     this.worktreeManager
       .getDiff(agent, this.sessionConfig.id)
       .then((diff) => {
+        log.debug(TAG, `Diff for ${agent}: ${diff.length} chars`);
         this.emit('agentOutput', {
           agent,
           chunk: diff,
@@ -218,6 +298,7 @@ export class AgentOrchestrator extends EventEmitter<OrchestratorEvents> {
       })
       .catch((err: unknown) => {
         const message = err instanceof Error ? err.message : String(err);
+        log.error(TAG, `Failed to get diff for ${agent}`, err);
         this.emit('error', {
           message: `Failed to get diff for ${agent}: ${message}`,
           recoverable: true,
@@ -230,18 +311,24 @@ export class AgentOrchestrator extends EventEmitter<OrchestratorEvents> {
   }
 
   dispose(): void {
+    log.info(TAG, 'Disposing orchestrator');
     if (this.worktreeManager) {
-      this.worktreeManager.cleanupAll().catch(() => {
-        // Best-effort cleanup on dispose
+      this.worktreeManager.cleanupAll().catch((err) => {
+        log.error(TAG, 'Error cleaning up worktrees on dispose', err);
       });
     }
-    this.sessionManager.close();
+    try {
+      this.sessionManager.close();
+    } catch (err) {
+      log.error(TAG, 'Error closing session manager', err);
+    }
     this.removeAllListeners();
   }
 
   // --- Private pipeline logic ---
 
   private async runPipeline(task: TaskDefinition): Promise<void> {
+    log.info(TAG, `Starting pipeline for task: "${task.title}"`);
     await this.ensureClaudeClient();
 
     this.fsm.setTask(task);
@@ -256,6 +343,7 @@ export class AgentOrchestrator extends EventEmitter<OrchestratorEvents> {
       }
 
       if (this.paused) {
+        log.info(TAG, 'Pipeline paused, waiting for resume');
         await this.waitForResume();
         if (this.aborted) {
           throw new Error('Pipeline aborted by user');
@@ -263,6 +351,7 @@ export class AgentOrchestrator extends EventEmitter<OrchestratorEvents> {
       }
 
       const stageInfo = PIPELINE_STAGES[currentStageIndex];
+      log.info(TAG, `=== Stage ${currentStageIndex + 1}/${PIPELINE_STAGES.length}: ${stageInfo.workingStage} (agent=${stageInfo.agent}) ===`);
 
       this.fsm.updateAgentState(stageInfo.agent, {
         status: 'working',
@@ -278,9 +367,13 @@ export class AgentOrchestrator extends EventEmitter<OrchestratorEvents> {
       );
 
       try {
+        const startTime = Date.now();
         await this.runAgentStage(stageInfo, task);
+        const elapsed = ((Date.now() - startTime) / 1000).toFixed(1);
+        log.info(TAG, `Agent ${stageInfo.agent} completed in ${elapsed}s`);
       } catch (err) {
         const message = err instanceof Error ? err.message : String(err);
+        log.error(TAG, `Agent ${stageInfo.agent} failed`, err);
         this.fsm.updateAgentState(stageInfo.agent, { status: 'error' });
         this.emitTimelineEvent(
           'agent_error',
@@ -306,6 +399,7 @@ export class AgentOrchestrator extends EventEmitter<OrchestratorEvents> {
 
       const currentFSMStage = this.fsm.getStage();
       if (currentFSMStage !== stageInfo.approvalStage) {
+        log.debug(TAG, `Gate auto-skipped for ${stageInfo.approvalStage}`);
         this.emitTimelineEvent(
           'gate_approved',
           stageInfo.agent,
@@ -328,6 +422,7 @@ export class AgentOrchestrator extends EventEmitter<OrchestratorEvents> {
       const gateConfig = this.sessionConfig!.gates[stageInfo.gateKey];
 
       if (gateConfig === 'optional') {
+        log.debug(TAG, `Optional gate auto-approved for ${stageInfo.approvalStage}`);
         this.emitTimelineEvent(
           'gate_approved',
           stageInfo.agent,
@@ -339,6 +434,7 @@ export class AgentOrchestrator extends EventEmitter<OrchestratorEvents> {
         continue;
       }
 
+      log.info(TAG, `Waiting for user approval at ${stageInfo.approvalStage}`);
       const diffStats = await this.computeDiffStats(stageInfo.agent);
       const gatePending: GatePendingInfo = {
         stage: stageInfo.approvalStage,
@@ -360,6 +456,7 @@ export class AgentOrchestrator extends EventEmitter<OrchestratorEvents> {
       );
 
       const approved = await this.waitForGateApproval();
+      log.info(TAG, `Gate ${stageInfo.approvalStage} ${approved ? 'approved' : 'rejected'}`);
 
       if (approved) {
         this.fsm.transition('approved');
@@ -402,6 +499,7 @@ export class AgentOrchestrator extends EventEmitter<OrchestratorEvents> {
         });
 
         const rejectedToStage = this.fsm.getStage();
+        log.info(TAG, `Rejected, returning to stage: ${rejectedToStage}`);
         const backIndex = PIPELINE_STAGES.findIndex(
           (s) => s.workingStage === rejectedToStage,
         );
@@ -409,6 +507,7 @@ export class AgentOrchestrator extends EventEmitter<OrchestratorEvents> {
       }
     }
 
+    log.info(TAG, 'All agent stages complete, beginning merge');
     this.emitTimelineEvent('merge_started', 'orchestrator', 'merging', 'Merging changes');
 
     await this.performMerge();
@@ -416,6 +515,7 @@ export class AgentOrchestrator extends EventEmitter<OrchestratorEvents> {
 
     this.emitTimelineEvent('merge_completed', 'orchestrator', 'done', 'Merge complete');
     this.emitTimelineEvent('pipeline_completed', null, 'done', 'Pipeline completed successfully');
+    log.info(TAG, 'Pipeline completed successfully');
   }
 
   private async runAgentStage(
@@ -426,16 +526,27 @@ export class AgentOrchestrator extends EventEmitter<OrchestratorEvents> {
       throw new Error('Orchestrator not fully initialized');
     }
 
-    const worktreePath = await this.worktreeManager.createWorktree(
-      stageInfo.agent,
-      this.sessionConfig.id,
-    );
+    log.debug(TAG, `Creating worktree for ${stageInfo.agent}`);
+    let worktreePath: string;
+    try {
+      worktreePath = await this.worktreeManager.createWorktree(
+        stageInfo.agent,
+        this.sessionConfig.id,
+      );
+      log.debug(TAG, `Worktree created at: ${worktreePath}`);
+    } catch (err) {
+      log.error(TAG, `Failed to create worktree for ${stageInfo.agent}`, err);
+      throw new Error(`Worktree creation failed for ${stageInfo.agent}: ${err instanceof Error ? err.message : String(err)}`);
+    }
 
     const systemPrompt = this.loadSystemPrompt(stageInfo.agent);
+    log.debug(TAG, `System prompt loaded for ${stageInfo.agent} (${systemPrompt.length} chars)`);
+
     const toolExecutor = new ToolExecutor(worktreePath);
     const tools = this.getToolsForAgent(stageInfo.agent);
     const userMessage = this.buildAgentContext(stageInfo.agent, task);
 
+    log.debug(TAG, `Calling Claude API for ${stageInfo.agent} (model=${this.sessionConfig.agents[stageInfo.agent].model})`);
     const outputChunks: string[] = [];
 
     const output = await this.claudeClient.createAgentMessage({
@@ -453,22 +564,36 @@ export class AgentOrchestrator extends EventEmitter<OrchestratorEvents> {
         });
       },
       onToolUse: async (toolName, input) => {
+        log.debug(TAG, `${stageInfo.agent} tool call: ${toolName}`, input);
         this.emitTimelineEvent(
           'tool_call',
           stageInfo.agent,
           stageInfo.workingStage,
           `Tool: ${toolName}`,
         );
-        return toolExecutor.execute(toolName, input);
+        try {
+          const result = await toolExecutor.execute(toolName, input);
+          log.debug(TAG, `${stageInfo.agent} tool ${toolName} returned (${result.length} chars)`);
+          return result;
+        } catch (err) {
+          log.error(TAG, `${stageInfo.agent} tool ${toolName} failed`, err);
+          throw err;
+        }
       },
     });
 
+    log.info(TAG, `${stageInfo.agent} produced ${output.length} chars of output`);
     this.agentOutputs.set(stageInfo.agent, output);
-    this.sessionManager.storeAgentOutput(
-      this.sessionConfig.id,
-      stageInfo.agent,
-      output,
-    );
+
+    try {
+      this.sessionManager.storeAgentOutput(
+        this.sessionConfig.id,
+        stageInfo.agent,
+        output,
+      );
+    } catch (err) {
+      log.error(TAG, `Failed to persist agent output for ${stageInfo.agent}`, err);
+    }
   }
 
   private buildAgentContext(agent: AgentName, task: TaskDefinition): string {
@@ -549,11 +674,17 @@ export class AgentOrchestrator extends EventEmitter<OrchestratorEvents> {
     ];
 
     for (const candidate of candidates) {
-      if (fs.existsSync(candidate)) {
-        return fs.readFileSync(candidate, 'utf-8');
+      try {
+        if (fs.existsSync(candidate)) {
+          log.debug(TAG, `System prompt found: ${candidate}`);
+          return fs.readFileSync(candidate, 'utf-8');
+        }
+      } catch (err) {
+        log.warn(TAG, `Failed to read prompt file: ${candidate}`, err);
       }
     }
 
+    log.warn(TAG, `No system prompt file found for ${agent}, using fallback`);
     return this.getFallbackPrompt(agent);
   }
 
@@ -575,27 +706,31 @@ export class AgentOrchestrator extends EventEmitter<OrchestratorEvents> {
   private async ensureClaudeClient(): Promise<void> {
     if (this.claudeClient) return;
 
+    log.info(TAG, 'Initializing Claude client');
     let apiKey: string | undefined;
 
     try {
-      apiKey = await this.context.secrets.get('agentflow.claudeApiKey');
-    } catch {
-      // SecretStorage may not be available
+      apiKey = await this.context.secrets.get('beebuilder.claudeApiKey');
+      if (apiKey) log.debug(TAG, 'API key loaded from SecretStorage');
+    } catch (err) {
+      log.warn(TAG, 'SecretStorage not available', err);
     }
 
     if (!apiKey) {
       apiKey = vscode.workspace
-        .getConfiguration('agentflow')
+        .getConfiguration('beebuilder')
         .get<string>('claudeApiKey');
+      if (apiKey) log.debug(TAG, 'API key loaded from settings');
     }
 
     if (!apiKey) {
-      throw new Error(
-        'Claude API key not configured. Set it via SecretStorage or agentflow.claudeApiKey setting.',
-      );
+      const msg = 'Claude API key not configured. Set it via SecretStorage or beebuilder.claudeApiKey setting.';
+      log.error(TAG, msg);
+      throw new Error(msg);
     }
 
     this.claudeClient = new ClaudeClient(apiKey);
+    log.info(TAG, 'Claude client initialized');
   }
 
   private async waitForGateApproval(): Promise<boolean> {
@@ -637,28 +772,42 @@ export class AgentOrchestrator extends EventEmitter<OrchestratorEvents> {
         }
       }
 
-      return { filesChanged: files.size, linesAdded: added, linesRemoved: removed };
-    } catch {
+      const stats = { filesChanged: files.size, linesAdded: added, linesRemoved: removed };
+      log.debug(TAG, `Diff stats for ${agent}:`, stats);
+      return stats;
+    } catch (err) {
+      log.error(TAG, `Failed to compute diff stats for ${agent}`, err);
       return { filesChanged: 0, linesAdded: 0, linesRemoved: 0 };
     }
   }
 
   private async performMerge(): Promise<void> {
-    if (!this.worktreeManager || !this.sessionConfig) return;
+    if (!this.worktreeManager || !this.sessionConfig) {
+      log.warn(TAG, 'performMerge called but no worktree/session');
+      return;
+    }
 
     const strategy = this.sessionConfig.gitMergeStrategy;
+    log.info(TAG, `Merging with strategy: ${strategy}`);
 
-    await this.worktreeManager.mergeWorktree(
-      'coder',
-      this.sessionConfig.id,
-      strategy,
-    );
+    try {
+      await this.worktreeManager.mergeWorktree(
+        'coder',
+        this.sessionConfig.id,
+        strategy,
+      );
+      log.info(TAG, 'Merge completed');
+    } catch (err) {
+      log.error(TAG, 'Merge failed', err);
+      throw new Error(`Merge failed: ${err instanceof Error ? err.message : String(err)}`);
+    }
 
     for (const agent of ['planner', 'coder', 'tester', 'reviewer'] as AgentName[]) {
       try {
         await this.worktreeManager.removeWorktree(agent);
-      } catch {
-        // Best-effort cleanup
+        log.debug(TAG, `Worktree cleaned up for ${agent}`);
+      } catch (err) {
+        log.warn(TAG, `Failed to clean up worktree for ${agent}`, err);
       }
     }
   }
@@ -680,7 +829,11 @@ export class AgentOrchestrator extends EventEmitter<OrchestratorEvents> {
       message,
     };
 
-    this.timelineLog?.append(event);
+    try {
+      this.timelineLog?.append(event);
+    } catch (err) {
+      log.error(TAG, 'Failed to append timeline event', err);
+    }
     this.emit('timelineEvent', event);
   }
 }

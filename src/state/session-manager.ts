@@ -1,6 +1,9 @@
 import * as fs from 'node:fs';
 import * as path from 'node:path';
+import { log } from '../util/logger.js';
 import type { AgentName, PipelineStage, SessionConfig } from '../shared/types.js';
+
+const TAG = 'SessionManager';
 
 interface StoredSession {
   id: string;
@@ -35,27 +38,43 @@ export class SessionManager {
 
   constructor(dbPath: string) {
     this.storePath = dbPath.replace(/\.db$/, '.json');
-    fs.mkdirSync(path.dirname(this.storePath), { recursive: true });
+    log.debug(TAG, `Store path: ${this.storePath}`);
+
+    try {
+      fs.mkdirSync(path.dirname(this.storePath), { recursive: true });
+    } catch (err) {
+      log.error(TAG, 'Failed to create storage directory', err);
+      throw err;
+    }
+
     this.data = this.loadStore();
+    log.info(TAG, `Loaded ${this.data.sessions.length} sessions from store`);
   }
 
   private loadStore(): StoreData {
     try {
       if (fs.existsSync(this.storePath)) {
         const raw = fs.readFileSync(this.storePath, 'utf-8');
-        return JSON.parse(raw) as StoreData;
+        const parsed = JSON.parse(raw) as StoreData;
+        log.debug(TAG, 'Store loaded from disk');
+        return parsed;
       }
-    } catch {
-      // Corrupted file, start fresh
+    } catch (err) {
+      log.warn(TAG, 'Failed to load store (corrupted?), starting fresh', err);
     }
     return { sessions: [], pipelineStates: {}, agentOutputs: [] };
   }
 
   private persist(): void {
-    fs.writeFileSync(this.storePath, JSON.stringify(this.data, null, 2), 'utf-8');
+    try {
+      fs.writeFileSync(this.storePath, JSON.stringify(this.data, null, 2), 'utf-8');
+    } catch (err) {
+      log.error(TAG, 'Failed to persist store to disk', err);
+    }
   }
 
   createSession(config: SessionConfig): string {
+    log.info(TAG, `Creating session: ${config.id} (project=${config.projectPath})`);
     this.data.sessions.push({
       id: config.id,
       projectPath: config.projectPath,
@@ -68,7 +87,12 @@ export class SessionManager {
 
   loadSession(id: string): SessionConfig | null {
     const session = this.data.sessions.find((s) => s.id === id);
-    return session?.config ?? null;
+    if (!session) {
+      log.debug(TAG, `Session not found: ${id}`);
+      return null;
+    }
+    log.debug(TAG, `Session loaded: ${id}`);
+    return session.config;
   }
 
   updatePipelineState(sessionId: string, stage: PipelineStage, snapshot: string): void {
@@ -82,6 +106,7 @@ export class SessionManager {
   }
 
   storeAgentOutput(sessionId: string, agentName: AgentName, output: string): void {
+    log.debug(TAG, `Storing output for ${agentName} (session=${sessionId}, ${output.length} chars)`);
     this.data.agentOutputs.push({
       sessionId,
       agentName,
@@ -108,6 +133,7 @@ export class SessionManager {
   }
 
   close(): void {
+    log.debug(TAG, 'Closing session manager');
     this.persist();
   }
 }

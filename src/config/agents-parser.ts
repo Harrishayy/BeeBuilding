@@ -1,7 +1,10 @@
 import * as fs from 'node:fs';
 import * as path from 'node:path';
+import { log } from '../util/logger.js';
 import type { AgentConfig, AgentName, GateConfig, SessionConfig } from '../shared/types.js';
 import { defaultAgentConfigs, defaultGateConfig, defaultSessionConfig } from './defaults.js';
+
+const TAG = 'ConfigParser';
 
 function parseYamlValue(raw: string): string | number | boolean {
   const trimmed = raw.trim();
@@ -72,6 +75,7 @@ function applyAgentOverrides(
     const overrides = parsed[name] as Record<string, unknown> | undefined;
     if (!overrides || typeof overrides !== 'object') continue;
 
+    log.debug(TAG, `Applying overrides for agent: ${name}`, overrides);
     agents[name] = {
       ...agents[name],
       ...(overrides.model !== undefined && { model: String(overrides.model) }),
@@ -114,6 +118,7 @@ function applyGateOverrides(
     gates.afterReview = String(gateObj.afterReview) as GateConfig['afterReview'];
   }
 
+  log.debug(TAG, 'Gate overrides applied', gates);
   return gates;
 }
 
@@ -122,17 +127,26 @@ export function parseAgentsConfig(projectRoot: string): SessionConfig {
   const config = defaultSessionConfig(projectRoot);
 
   if (!fs.existsSync(agentsPath)) {
+    log.info(TAG, `No AGENTS.md found at ${agentsPath}, using defaults`);
     return config;
   }
+
+  log.info(TAG, `Parsing AGENTS.md: ${agentsPath}`);
 
   try {
     const markdown = fs.readFileSync(agentsPath, 'utf-8');
     const yamlBlocks = extractYamlBlocks(markdown);
+    log.debug(TAG, `Found ${yamlBlocks.length} YAML blocks in AGENTS.md`);
+
     const merged: Record<string, unknown> = {};
 
     for (const block of yamlBlocks) {
-      const parsed = parseSimpleYaml(block);
-      Object.assign(merged, parsed);
+      try {
+        const parsed = parseSimpleYaml(block);
+        Object.assign(merged, parsed);
+      } catch (blockErr) {
+        log.warn(TAG, 'Failed to parse a YAML block in AGENTS.md', blockErr);
+      }
     }
 
     config.agents = applyAgentOverrides(defaultAgentConfigs, merged);
@@ -150,8 +164,13 @@ export function parseAgentsConfig(projectRoot: string): SessionConfig {
         config.gitMergeStrategy = strategy;
       }
     }
-  } catch {
-    // If parsing fails, return defaults
+
+    log.info(TAG, 'AGENTS.md parsed successfully', {
+      gitMergeStrategy: config.gitMergeStrategy,
+      gates: config.gates,
+    });
+  } catch (err) {
+    log.error(TAG, 'Failed to parse AGENTS.md, using defaults', err);
   }
 
   return config;

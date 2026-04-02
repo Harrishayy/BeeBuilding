@@ -1,4 +1,5 @@
 import EventEmitter from 'eventemitter3';
+import { log } from '../util/logger.js';
 import type {
   AgentName,
   AgentState,
@@ -10,6 +11,8 @@ import type {
   PipelineStage,
   TaskDefinition,
 } from '../shared/types.js';
+
+const TAG = 'PipelineFSM';
 
 export type FSMEvent =
   | 'taskSubmitted'
@@ -79,46 +82,57 @@ export class PipelineFSM extends EventEmitter<FSMEvents> {
     this.agentStates = Object.fromEntries(
       AGENT_NAMES.map((n) => [n, createDefaultAgentState(n)]),
     ) as Record<AgentName, AgentState>;
+    log.debug(TAG, 'FSM initialized in idle state');
   }
 
   setSessionId(id: string): void {
     this.sessionId = id;
+    log.debug(TAG, `Session ID set: ${id}`);
   }
 
   setGateConfig(config: GateConfig): void {
     this.gateConfig = config;
+    log.debug(TAG, 'Gate config set', config);
   }
 
   setTask(task: TaskDefinition): void {
     this.task = task;
     this.startedAt = Date.now();
     this.errorMessage = null;
+    log.info(TAG, `Task set: "${task.title}" (id=${task.id})`);
   }
 
   transition(event: FSMEvent): void {
+    const prevStage = this.stage;
+
     if (event === 'error') {
       this.stage = 'failed';
+      log.error(TAG, `Transition: ${prevStage} -> failed (error event)`);
       this.emit('stateChange', this.getSnapshot());
       return;
     }
 
     if (event === 'reset') {
       if (this.stage === 'done' || this.stage === 'failed') {
+        log.info(TAG, `Resetting FSM from ${this.stage} to idle`);
         this.resetState();
         return;
       }
-      throw new Error(`Cannot reset from stage "${this.stage}"`);
+      const msg = `Cannot reset from stage "${this.stage}"`;
+      log.error(TAG, msg);
+      throw new Error(msg);
     }
 
     const stageTransitions = TRANSITION_TABLE[this.stage];
     const nextStage = stageTransitions?.[event];
 
     if (!nextStage) {
-      throw new Error(
-        `Invalid transition: "${this.stage}" + "${event}". No such transition exists.`,
-      );
+      const msg = `Invalid transition: "${this.stage}" + "${event}". No such transition exists.`;
+      log.error(TAG, msg);
+      throw new Error(msg);
     }
 
+    log.info(TAG, `Transition: ${prevStage} -[${event}]-> ${nextStage}`);
     this.stage = nextStage;
     this.currentGate = null;
     this.emit('stateChange', this.getSnapshot());
@@ -126,6 +140,7 @@ export class PipelineFSM extends EventEmitter<FSMEvents> {
     if (this.gateConfig && this.isApprovalStage(nextStage)) {
       const gateKey = APPROVAL_STAGE_TO_GATE_KEY[nextStage];
       if (gateKey && this.gateConfig[gateKey] === 'skip') {
+        log.debug(TAG, `Auto-skipping gate at ${nextStage} (config=skip)`);
         this.transition('approved');
       }
     }
@@ -160,6 +175,10 @@ export class PipelineFSM extends EventEmitter<FSMEvents> {
     }>,
   ): void {
     const current = this.agentStates[name];
+    if (!current) {
+      log.warn(TAG, `updateAgentState: unknown agent "${name}"`);
+      return;
+    }
     if (update.status !== undefined) current.status = update.status;
     if (update.currentTask !== undefined) current.currentTask = update.currentTask;
     if (update.outputChunks !== undefined) current.outputChunks = update.outputChunks;
@@ -169,11 +188,13 @@ export class PipelineFSM extends EventEmitter<FSMEvents> {
 
   setGatePending(info: GatePendingInfo): void {
     this.currentGate = info;
+    log.info(TAG, `Gate pending: ${info.stage} (${info.fromAgent} -> ${info.toAgent})`);
     this.emit('stateChange', this.getSnapshot());
   }
 
   setError(message: string): void {
     this.errorMessage = message;
+    log.error(TAG, `Error set: ${message}`);
   }
 
   reset(): void {
@@ -189,6 +210,7 @@ export class PipelineFSM extends EventEmitter<FSMEvents> {
     this.agentStates = Object.fromEntries(
       AGENT_NAMES.map((n) => [n, createDefaultAgentState(n)]),
     ) as Record<AgentName, AgentState>;
+    log.info(TAG, 'FSM reset to idle');
     this.emit('stateChange', this.getSnapshot());
   }
 
