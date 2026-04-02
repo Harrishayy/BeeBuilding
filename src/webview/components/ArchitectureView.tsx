@@ -47,8 +47,8 @@ export function ArchitectureView() {
         height: '100%',
       }}
     >
-      <div className="pixel-text" style={{ fontSize: 16, textAlign: 'center', color: '#ffd54f' }}>
-        AGENT ARCHITECTURE
+      <div className="pixel-text" style={{ fontSize: 16, textAlign: 'center', color: '#FFB300' }}>
+        {'\uD83D\uDC1D'} SWARM FORMATION
       </div>
 
       <div className="pixel-text" style={{ fontSize: 9, textAlign: 'center', color: '#888' }}>
@@ -112,7 +112,7 @@ export function ArchitectureView() {
             {'\u270E'} REVISE
           </button>
           <button className="pixel-btn pixel-btn-primary" onClick={handleApprove}>
-            {'\u2714'} APPROVE & EXECUTE
+            {'\u2714'} DEPLOY SWARM
           </button>
         </div>
       )}

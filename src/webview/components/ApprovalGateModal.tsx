@@ -3,27 +3,27 @@ import { useVSCode } from '../hooks/useVSCode';
 import { usePipelineStore } from '../state/pipelineStore';
 import type { AgentName, PipelineStage } from '../../shared/types';
 
-const AGENT_ACTION: Record<AgentName, string> = {
-  planner: 'PLANNING',
-  coder: 'CODING',
-  tester: 'TESTING',
-  reviewer: 'REVIEWING',
-  orchestrator: 'MERGING',
+const AGENT_ACTION: Record<string, string> = {
+  scout_bee: 'SCOUTING',
+  worker_bee: 'BUILDING',
+  tester_bee: 'TESTING',
+  guard_bee: 'GUARDING',
+  queen_bee: 'MERGING',
 };
 
 const STAGE_LABEL: Record<PipelineStage, string> = {
-  idle: 'IDLE',
-  planning: 'PLANNING',
-  plan_approval: 'PLAN APPROVAL',
-  coding: 'CODING',
-  code_approval: 'CODE APPROVAL',
+  idle: 'HIVE IDLE',
+  planning: 'SCOUTING',
+  plan_approval: "QUEEN'S GATE: SCOUT",
+  coding: 'BUILDING',
+  code_approval: "QUEEN'S GATE: WORKER",
   testing: 'TESTING',
-  test_approval: 'TEST APPROVAL',
-  reviewing: 'REVIEWING',
-  review_approval: 'REVIEW APPROVAL',
-  merging: 'MERGING',
-  done: 'DONE',
-  failed: 'FAILED',
+  test_approval: "QUEEN'S GATE: TESTER",
+  reviewing: 'GUARDING',
+  review_approval: "QUEEN'S GATE: GUARD",
+  merging: 'SEALING HONEYCOMB',
+  done: 'NECTAR RUN COMPLETE',
+  failed: 'SWARM FAILED',
 };
 
 export function ApprovalGateModal() {
@@ -78,21 +78,22 @@ export function ApprovalGateModal() {
       <div
         className="pixel-border"
         style={{
-          background: '#16213e',
+          background: '#111111',
           padding: 16,
           maxWidth: 320,
           width: '100%',
           display: 'flex',
           flexDirection: 'column',
           gap: 12,
+          borderColor: '#FFB300',
         }}
       >
         {/* Title */}
         <div
           className="pixel-text"
-          style={{ fontSize: 12, color: '#ffd54f', textAlign: 'center' }}
+          style={{ fontSize: 12, color: '#FFB300', textAlign: 'center' }}
         >
-          GATE CHECK
+          {'\uD83D\uDC51'} QUEEN&apos;S GATE
         </div>
 
         {/* From -> To */}
@@ -116,11 +117,11 @@ export function ApprovalGateModal() {
             }}
           >
             <span style={{ color: '#4fc3f7' }}>
-              {AGENT_ACTION[gate.fromAgent]}
+              {AGENT_ACTION[gate.fromAgent] ?? gate.fromAgent}
             </span>
-            <span style={{ color: '#888' }}>{'\u2192'}</span>
+            <span style={{ color: '#FFA000' }}>{'\u2192'}</span>
             <span style={{ color: '#66bb6a' }}>
-              {AGENT_ACTION[gate.toAgent]}
+              {AGENT_ACTION[gate.toAgent] ?? gate.toAgent}
             </span>
           </div>
           <div
@@ -152,7 +153,7 @@ export function ApprovalGateModal() {
               className="pixel-text"
               style={{ fontSize: 8, color: '#888' }}
             >
-              FILES
+              CELLS
             </div>
           </div>
           <div style={{ textAlign: 'center' }}>
@@ -197,7 +198,7 @@ export function ApprovalGateModal() {
               marginBottom: 4,
               }}
             >
-              FEEDBACK
+              PHEROMONE FEEDBACK
             </label>
             <textarea
               className="pixel-input"
@@ -226,7 +227,7 @@ export function ApprovalGateModal() {
             className="pixel-btn pixel-btn-danger"
             onClick={handleReject}
           >
-            {showFeedback ? 'SEND' : 'CHANGES'}
+            {showFeedback ? 'SEND' : 'REVISE'}
           </button>
           <button
             className="pixel-btn pixel-btn-primary"

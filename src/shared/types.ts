@@ -1,4 +1,4 @@
-export type DefaultAgentName = 'planner' | 'coder' | 'tester' | 'reviewer' | 'orchestrator';
+export type DefaultAgentName = 'scout_bee' | 'worker_bee' | 'tester_bee' | 'guard_bee' | 'queen_bee';
 export type AgentName = string;
 
 export type PipelineStage =

@@ -69,7 +69,7 @@ function applyAgentOverrides(
   parsed: Record<string, unknown>,
 ): Record<AgentName, AgentConfig> {
   const agents = { ...base };
-  const agentNames: AgentName[] = ['planner', 'coder', 'tester', 'reviewer', 'orchestrator'];
+  const agentNames: AgentName[] = ['scout_bee', 'worker_bee', 'tester_bee', 'guard_bee', 'queen_bee'];
 
   for (const name of agentNames) {
     const overrides = parsed[name] as Record<string, unknown> | undefined;

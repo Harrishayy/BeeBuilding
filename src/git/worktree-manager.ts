@@ -4,7 +4,7 @@ import { log } from '../util/logger.js';
 import type { AgentName } from '../shared/types.js';
 
 const TAG = 'WorktreeManager';
-const WORKTREE_DIR = '.beebuilder/worktrees';
+const WORKTREE_DIR = '.beebuilding/worktrees';
 
 export class WorktreeManager {
   private git: SimpleGit;
@@ -19,7 +19,7 @@ export class WorktreeManager {
 
   async createWorktree(agentName: AgentName, sessionId: string): Promise<string> {
     const worktreePath = this.getWorktreePath(agentName);
-    const branchName = `agentflow/${agentName}/${sessionId}`;
+    const branchName = `beebuilding/${agentName}/${sessionId}`;
     log.info(TAG, `Creating worktree: ${worktreePath} (branch=${branchName})`);
 
     try {
@@ -83,7 +83,7 @@ export class WorktreeManager {
   }
 
   async getDiff(agentName: AgentName, sessionId: string): Promise<string> {
-    const branchName = `agentflow/${agentName}/${sessionId}`;
+    const branchName = `beebuilding/${agentName}/${sessionId}`;
     log.debug(TAG, `Getting diff for ${agentName} (branch=${branchName})`);
 
     try {
@@ -109,7 +109,7 @@ export class WorktreeManager {
     sessionId: string,
     strategy: 'squash' | 'rebase' | 'merge',
   ): Promise<void> {
-    const branchName = `agentflow/${agentName}/${sessionId}`;
+    const branchName = `beebuilding/${agentName}/${sessionId}`;
     log.info(TAG, `Merging ${branchName} with strategy: ${strategy}`);
 
     try {
@@ -117,7 +117,7 @@ export class WorktreeManager {
         case 'squash':
           await this.git.merge([branchName, '--squash']);
           await this.git.commit(
-            `agentflow: ${agentName} changes (session ${sessionId})`,
+            `beebuilding: ${agentName} changes (session ${sessionId})`,
           );
           break;
         case 'rebase':
@@ -125,7 +125,7 @@ export class WorktreeManager {
           break;
         case 'merge':
           await this.git.merge([branchName, '--no-ff', '-m',
-            `agentflow: merge ${agentName} (session ${sessionId})`]);
+            `beebuilding: merge ${agentName} (session ${sessionId})`]);
           break;
       }
       log.info(TAG, `Merge completed (strategy=${strategy})`);

@@ -225,12 +225,12 @@ export function BeeLoadingScreen() {
           className="pixel-text"
           style={{
             fontSize: 14,
-            color: '#ffd54f',
-            textShadow: '2px 2px 0 #1a1a2e, -1px -1px 0 #1a1a2e',
+            color: '#FFB300',
+            textShadow: '2px 2px 0 #111111, -1px -1px 0 #111111',
             letterSpacing: 3,
           }}
         >
-          LOADING
+          BEES LOADING
           <span className="anim-blink" style={{ marginLeft: 2 }}>...</span>
         </span>
 
@@ -243,7 +243,9 @@ export function BeeLoadingScreen() {
               style={{
                 width: 6,
                 height: 6,
-                background: '#ffd54f',
+                background: '#FFB300',
+                borderRadius: '50%',
+                boxShadow: '0 0 4px #FFB30060',
                 animationDelay: `${i * 0.2}s`,
               }}
             />

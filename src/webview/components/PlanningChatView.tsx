@@ -71,7 +71,7 @@ export function PlanningChatView() {
 
   const placeholder = currentQuestion
     ? `Answer Q${currentQuestionIndex + 1}...`
-    : 'Reply to the planning assistant...';
+    : 'Reply to the Scout Bee...';
 
   return (
     <div
@@ -164,7 +164,7 @@ export function PlanningChatView() {
             className="pixel-text"
             style={{ fontSize: 9, color: '#ffd54f', textAlign: 'center', padding: 8 }}
           >
-            {planningStatus === 'generating_plan' ? 'GENERATING PLAN...' : 'THINKING...'}
+            {planningStatus === 'generating_plan' ? 'SCOUT BEE MAPPING FLORA...' : 'SCOUT BEE THINKING...'}
           </div>
         )}
         <div ref={messagesEndRef} />
@@ -268,7 +268,7 @@ function MessageBubble({ message }: { message: PlanningMessage }) {
         }}
       >
         <div className="pixel-text" style={{ fontSize: 8, color: '#888', marginBottom: 4 }}>
-          {isUser ? 'YOU' : 'PLANNER'}
+          {isUser ? 'BEEKEEPER' : 'SCOUT BEE'}
         </div>
         <div className="pixel-text" style={{ fontSize: 9, whiteSpace: 'pre-wrap' }}>
           {content}

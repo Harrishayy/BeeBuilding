@@ -1,25 +1,26 @@
 @import url('https://fonts.googleapis.com/css2?family=Press+Start+2P&display=swap');
 
 :root {
-  --pixel-bg: #1a1a2e;
-  --pixel-bg-alt: #16213e;
-  --pixel-surface: #0f3460;
-  --pixel-surface-light: #1a4a7a;
-  --pixel-border: #e94560;
-  --pixel-border-light: #ff6b6b;
-  --pixel-text: #e0e0e0;
-  --pixel-text-dim: #888888;
-  --pixel-text-bright: #ffffff;
+  --pixel-bg: #111111;
+  --pixel-bg-alt: #1a1a2e;
+  --pixel-surface: #1a1a0d;
+  --pixel-surface-light: #2a2a1a;
+  --pixel-border: #FFA000;
+  --pixel-border-light: #FFB300;
+  --pixel-text: #e0e0d0;
+  --pixel-text-dim: #888870;
+  --pixel-text-bright: #fffff0;
 
-  --pixel-blue: #42a5f5;
+  --pixel-blue: #4FC3F7;
   --pixel-green: #66bb6a;
   --pixel-purple: #ab47bc;
-  --pixel-orange: #ffa726;
-  --pixel-gold: #ffd54f;
+  --pixel-orange: #FFA000;
+  --pixel-gold: #FFB300;
+  --pixel-amber: #FFC107;
   --pixel-red: #ef5350;
-  --pixel-yellow: #ffee58;
+  --pixel-yellow: #FFD54F;
   --pixel-grey: #757575;
-  --pixel-cyan: #4dd0e1;
+  --pixel-cyan: #FFB300;
 
   --pixel-skin: #ffcc80;
   --pixel-skin-dark: #ffb74d;
@@ -51,18 +52,18 @@ body {
 }
 
 .pixel-border {
-  border: 3px solid var(--pixel-text);
+  border: 3px solid var(--pixel-border);
   box-shadow:
-    inset -3px -3px 0 0 var(--pixel-text-dim),
-    inset 3px 3px 0 0 var(--pixel-text-bright),
+    inset -3px -3px 0 0 #99600080,
+    inset 3px 3px 0 0 #FFD54F80,
     6px 6px 0 0 rgba(0, 0, 0, 0.3);
 }
 
 .pixel-border-inset {
   border: 3px solid var(--pixel-text-dim);
   box-shadow:
-    inset -3px -3px 0 0 var(--pixel-text-bright),
-    inset 3px 3px 0 0 var(--pixel-text-dim);
+    inset -3px -3px 0 0 #FFD54F40,
+    inset 3px 3px 0 0 #99600040;
 }
 
 .pixel-container {
@@ -74,13 +75,13 @@ body {
   font-family: var(--font-pixel);
   font-size: 10px;
   padding: 8px 16px;
-  border: 3px solid var(--pixel-text);
+  border: 3px solid var(--pixel-border);
   background: var(--pixel-surface);
   color: var(--pixel-text);
   cursor: pointer;
   box-shadow:
-    inset -2px -2px 0 0 var(--pixel-text-dim),
-    inset 2px 2px 0 0 var(--pixel-text-bright),
+    inset -2px -2px 0 0 #99600080,
+    inset 2px 2px 0 0 #FFD54F80,
     4px 4px 0 0 rgba(0, 0, 0, 0.3);
   transition: none;
   image-rendering: pixelated;
@@ -88,12 +89,13 @@ body {
 
 .pixel-btn:hover {
   background: var(--pixel-surface-light);
+  border-color: var(--pixel-border-light);
 }
 
 .pixel-btn:active {
   box-shadow:
-    inset 2px 2px 0 0 var(--pixel-text-dim),
-    inset -2px -2px 0 0 var(--pixel-text-bright);
+    inset 2px 2px 0 0 #99600080,
+    inset -2px -2px 0 0 #FFD54F80;
   transform: translate(2px, 2px);
 }
 
@@ -103,13 +105,13 @@ body {
 }
 
 .pixel-btn-primary {
-  background: var(--pixel-green);
-  color: #1a1a1a;
-  border-color: #388e3c;
+  background: var(--pixel-gold);
+  color: #111111;
+  border-color: #FF8F00;
 }
 
 .pixel-btn-primary:hover:not(:disabled) {
-  background: #81c784;
+  background: var(--pixel-amber);
 }
 
 .pixel-btn-danger {
@@ -131,13 +133,13 @@ body {
   color: var(--pixel-text);
   box-shadow:
     inset 2px 2px 0 0 rgba(0, 0, 0, 0.3),
-    inset -2px -2px 0 0 rgba(255, 255, 255, 0.1);
+    inset -2px -2px 0 0 rgba(255, 176, 0, 0.1);
   outline: none;
   width: 100%;
 }
 
 .pixel-input:focus {
-  border-color: var(--pixel-cyan);
+  border-color: var(--pixel-gold);
 }
 
 .pixel-input::placeholder {
@@ -171,12 +173,12 @@ body {
 }
 
 ::-webkit-scrollbar-thumb {
-  background: var(--pixel-surface);
-  border: 2px solid var(--pixel-text-dim);
+  background: #FFA00060;
+  border: 2px solid var(--pixel-border);
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  background: var(--pixel-surface-light);
+  background: #FFB30080;
 }
 
 ::-webkit-scrollbar-corner {

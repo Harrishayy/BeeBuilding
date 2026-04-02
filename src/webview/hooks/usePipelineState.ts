@@ -91,14 +91,14 @@ export function usePipelineState(): void {
             stopTransitionLoading();
             setPlan(msg.payload);
             setPhase('plan_review');
-            addToast('Plan generated! Review and approve.', 'success');
+            addToast('Flight plan ready! Review the Scout Bee\'s findings.', 'success');
             break;
 
           case 'architectureReady':
             stopTransitionLoading();
             setArchitecture(msg.payload);
             setPhase('architecture');
-            addToast('Architecture determined! Review the agent setup.', 'success');
+            addToast('Hive architecture ready! Review the swarm formation.', 'success');
             break;
 
           case 'planningStatus':
@@ -128,7 +128,7 @@ export function usePipelineState(): void {
             break;
         }
       } catch (err) {
-        console.error('[BeeBuilder] Error handling message:', err);
+        console.error('[BeeBuilding] Error handling message:', err);
       }
     }
 

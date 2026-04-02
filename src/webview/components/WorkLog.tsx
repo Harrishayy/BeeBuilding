@@ -24,7 +24,7 @@ export function WorkLog({ chunks }: WorkLogProps) {
         fontFamily: 'var(--font-pixel)',
         fontSize: 9,
         lineHeight: 1.8,
-        color: '#66bb6a',
+        color: '#FFB300',
         maxHeight: 300,
         overflowY: 'auto',
         whiteSpace: 'pre-wrap',
@@ -32,7 +32,7 @@ export function WorkLog({ chunks }: WorkLogProps) {
       }}
     >
       {chunks.length === 0 && (
-        <span style={{ color: '#555' }}>Waiting for output...</span>
+        <span style={{ color: '#555' }}>Waiting for bee activity...</span>
       )}
 
       {chunks.map((chunk, i) => {
@@ -42,7 +42,7 @@ export function WorkLog({ chunks }: WorkLogProps) {
             key={i}
             className="anim-fade-in"
             style={{
-              color: isToolCall ? '#ffa726' : '#66bb6a',
+              color: isToolCall ? '#FFA000' : '#FFB300',
               marginBottom: 2,
             }}
           >
@@ -51,7 +51,7 @@ export function WorkLog({ chunks }: WorkLogProps) {
         );
       })}
 
-      <span className="anim-blink" style={{ color: '#66bb6a' }}>
+      <span className="anim-blink" style={{ color: '#FFB300' }}>
         _
       </span>
     </div>

@@ -82,42 +82,42 @@ Determine the agent architecture now.`;
   private fallbackArchitecture(plan: PlanDocument): AgentArchitecture {
     const agents: AgentSpec[] = [
       {
-        id: 'planner',
-        name: 'Planner',
-        role: 'Analyze the plan and create detailed implementation steps',
+        id: 'scout_bee',
+        name: 'Scout Bee',
+        role: 'Map the workspace flora and create detailed implementation steps',
         tools: ['read_file', 'list_files', 'search_codebase'],
         model: 'claude-sonnet-4-6',
-        systemPrompt: 'You are a planning agent. Create detailed implementation steps.',
+        systemPrompt: 'You are the Scout Bee. Create detailed implementation steps.',
       },
       {
-        id: 'coder',
-        name: 'Coder',
-        role: 'Implement the changes described in the plan',
+        id: 'worker_bee',
+        name: 'Worker Bee',
+        role: 'Construct the honeycomb — implement the changes described in the plan',
         tools: ['read_file', 'write_file', 'run_command', 'search_codebase'],
         model: 'claude-sonnet-4-6',
-        systemPrompt: 'You are a coding agent. Implement the changes.',
+        systemPrompt: 'You are the Worker Bee. Implement the changes.',
       },
       {
-        id: 'tester',
-        name: 'Tester',
-        role: 'Write and run tests for the implementation',
+        id: 'tester_bee',
+        name: 'Tester Bee',
+        role: 'Inspect the honeycomb quality — write and run tests',
         tools: ['read_file', 'write_file', 'run_command'],
         model: 'claude-sonnet-4-6',
-        systemPrompt: 'You are a testing agent. Write and run tests.',
+        systemPrompt: 'You are the Tester Bee. Write and run tests.',
       },
       {
-        id: 'reviewer',
-        name: 'Reviewer',
-        role: 'Review the implementation for quality and correctness',
+        id: 'guard_bee',
+        name: 'Guard Bee',
+        role: 'Patrol the perimeter — review for quality and correctness',
         tools: ['read_file', 'search_codebase', 'create_review_comment'],
         model: 'claude-sonnet-4-6',
-        systemPrompt: 'You are a review agent. Review the code.',
+        systemPrompt: 'You are the Guard Bee. Review the code.',
       },
     ];
 
     return {
       agents,
-      executionOrder: [['planner'], ['coder'], ['tester'], ['reviewer']],
+      executionOrder: [['scout_bee'], ['worker_bee'], ['tester_bee'], ['guard_bee']],
       estimatedTime: `${plan.complexity === 'high' ? 30 : plan.complexity === 'medium' ? 20 : 10} minutes`,
     };
   }

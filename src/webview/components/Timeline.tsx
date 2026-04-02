@@ -2,12 +2,12 @@ import { useState } from 'react';
 import type { TimelineEvent, AgentName } from '../../shared/types';
 import { usePipelineStore } from '../state/pipelineStore';
 
-const AGENT_DOT_COLORS: Record<AgentName, string> = {
-  planner: '#42a5f5',
-  coder: '#66bb6a',
-  tester: '#ab47bc',
-  reviewer: '#ffa726',
-  orchestrator: '#ffd54f',
+const AGENT_DOT_COLORS: Record<string, string> = {
+  scout_bee: '#4FC3F7',
+  worker_bee: '#FFA000',
+  tester_bee: '#66BB6A',
+  guard_bee: '#EF5350',
+  queen_bee: '#FFD700',
 };
 
 interface TimelineProps {
@@ -38,7 +38,8 @@ export function Timeline({ events }: TimelineProps) {
     <div
       className="pixel-border"
       style={{
-        background: 'var(--pixel-surface)',
+        background: '#111111',
+        borderColor: '#FFA000',
         width: collapsed ? 30 : 200,
         transition: 'width 0.15s',
         overflow: 'hidden',
@@ -52,7 +53,7 @@ export function Timeline({ events }: TimelineProps) {
         onClick={() => setCollapsed(!collapsed)}
         style={{
           padding: 8,
-          borderBottom: '2px solid #333',
+          borderBottom: '2px solid #FFA000',
           cursor: 'pointer',
           display: 'flex',
           alignItems: 'center',
@@ -60,12 +61,12 @@ export function Timeline({ events }: TimelineProps) {
           flexShrink: 0,
         }}
       >
-        <span style={{ fontSize: 11, color: '#aaa' }}>
+        <span style={{ fontSize: 11, color: '#FFB300' }}>
           {collapsed ? '\u25B6' : '\u25BC'}
         </span>
         {!collapsed && (
-          <span className="pixel-text" style={{ fontSize: 10 }}>
-            TIMELINE
+          <span className="pixel-text" style={{ fontSize: 10, color: '#FFB300' }}>
+            COLONY LOG
           </span>
         )}
       </div>
@@ -89,7 +90,7 @@ export function Timeline({ events }: TimelineProps) {
                 textAlign: 'center',
               }}
             >
-              No events yet
+              Hive is quiet...
             </div>
           )}
 
@@ -117,8 +118,12 @@ export function Timeline({ events }: TimelineProps) {
                   flexShrink: 0,
                   marginTop: 2,
                   backgroundColor: evt.agentName
-                    ? AGENT_DOT_COLORS[evt.agentName]
+                    ? (AGENT_DOT_COLORS[evt.agentName] ?? '#888')
                     : '#555',
+                  borderRadius: '50%',
+                  boxShadow: evt.agentName
+                    ? `0 0 3px ${AGENT_DOT_COLORS[evt.agentName] ?? '#888'}`
+                    : 'none',
                 }}
               />
               <div style={{ flex: 1, minWidth: 0 }}>

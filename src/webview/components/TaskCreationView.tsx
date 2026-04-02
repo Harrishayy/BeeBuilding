@@ -20,7 +20,7 @@ export function TaskCreationView() {
       return;
     }
     if (!description.trim()) {
-      addToast('Enter a task description to start planning', 'warning');
+      addToast('Enter a nectar run description to dispatch the Scout Bee', 'warning');
       return;
     }
     startTransitionLoading();
@@ -33,7 +33,7 @@ export function TaskCreationView() {
   const handleImportIssue = (title: string, body: string) => {
     setDescription(`${title}\n\n${body}`);
     setTab('manual');
-    addToast('Issue imported! Edit the description and start planning.', 'info');
+    addToast('Issue imported! Edit and launch your nectar run.', 'info');
   };
 
   return (
@@ -51,9 +51,9 @@ export function TaskCreationView() {
     >
       <div
         className="pixel-text"
-        style={{ fontSize: 16, textAlign: 'center', color: '#ffd54f', marginBottom: 4 }}
+        style={{ fontSize: 16, textAlign: 'center', color: '#FFB300', marginBottom: 4 }}
       >
-        NEW MISSION
+        {'\uD83C\uDF3B'} NEW NECTAR RUN
       </div>
 
       {/* API key warning */}
@@ -65,14 +65,14 @@ export function TaskCreationView() {
             gap: 8,
             padding: '8px 12px',
             background: '#3a2e1a',
-            border: '2px solid #ffd54f',
+            border: '2px solid #FFB300',
             borderRadius: 2,
             cursor: 'pointer',
           }}
           onClick={() => setPhase('settings')}
         >
           <span style={{ fontSize: 16 }}>{'\u26A0'}</span>
-          <span className="pixel-text" style={{ fontSize: 9, color: '#ffd54f' }}>
+          <span className="pixel-text" style={{ fontSize: 9, color: '#FFB300' }}>
             API key required — click here to configure in Settings
           </span>
         </div>
@@ -102,13 +102,13 @@ export function TaskCreationView() {
         <>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
             <label className="pixel-text" style={{ fontSize: 9, color: '#aaa' }}>
-              TASK DESCRIPTION
+              NECTAR RUN DESCRIPTION
             </label>
             <textarea
               className="pixel-input"
               value={description}
               onChange={(e) => setDescription(e.target.value)}
-              placeholder="Describe what you want to build..."
+              placeholder="Describe what the swarm should build..."
               rows={6}
               style={{ resize: 'vertical', fontFamily: 'inherit' }}
             />
@@ -134,7 +134,7 @@ export function TaskCreationView() {
             disabled={!description.trim()}
             style={{ alignSelf: 'center', marginTop: 8 }}
           >
-            {'\u25B6'} START PLANNING
+            {'\uD83D\uDC1D'} DISPATCH SCOUT BEE
           </button>
         </>
       ) : (

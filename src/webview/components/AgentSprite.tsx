@@ -1,79 +1,51 @@
-import { useMemo } from 'react';
 import type { AgentName, AgentStatus } from '../../shared/types';
 
-type PixelGrid = (string | null)[][];
-
-const SKIN = '#ffcc80';
-const EYE = '#ffffff';
-const MOUTH = '#a1887f';
-
-interface AgentColors {
-  hair: string;
-  body: string;
-  legs: string;
+interface BeeTheme {
+  emoji: string;
+  borderColor: string;
+  glowColor: string;
+  label: string;
 }
 
-const AGENT_COLORS: Record<AgentName, AgentColors> = {
-  planner: { hair: '#1565c0', body: '#42a5f5', legs: '#0d47a1' },
-  coder: { hair: '#2e7d32', body: '#66bb6a', legs: '#1b5e20' },
-  tester: { hair: '#6a1b9a', body: '#ab47bc', legs: '#4a148c' },
-  reviewer: { hair: '#e65100', body: '#ffa726', legs: '#bf360c' },
-  orchestrator: { hair: '#ffd700', body: '#ffd54f', legs: '#f57f17' },
+const BEE_THEMES: Record<string, BeeTheme> = {
+  queen_bee: {
+    emoji: '\uD83D\uDC51\uD83D\uDC1D',
+    borderColor: '#FFD700',
+    glowColor: '#FFB300',
+    label: 'QUEEN',
+  },
+  scout_bee: {
+    emoji: '\uD83D\uDD0D\uD83D\uDC1D',
+    borderColor: '#4FC3F7',
+    glowColor: '#0288D1',
+    label: 'SCOUT',
+  },
+  worker_bee: {
+    emoji: '\uD83D\uDC77\uD83D\uDC1D',
+    borderColor: '#FFA000',
+    glowColor: '#FF8F00',
+    label: 'WORKER',
+  },
+  tester_bee: {
+    emoji: '\uD83E\uDDEA\uD83D\uDC1D',
+    borderColor: '#66BB6A',
+    glowColor: '#388E3C',
+    label: 'TESTER',
+  },
+  guard_bee: {
+    emoji: '\uD83D\uDEE1\uFE0F\uD83D\uDC1D',
+    borderColor: '#EF5350',
+    glowColor: '#C62828',
+    label: 'GUARD',
+  },
 };
 
-function buildSprite(colors: AgentColors, isOrchestrator: boolean): PixelGrid {
-  const { hair: H, body: B, legs: L } = colors;
-  const S = SKIN;
-  const E = EYE;
-  const M = MOUTH;
-  const _ = null;
-
-  if (isOrchestrator) {
-    return [
-      [_, H, _, H, H, _, H, _],
-      [_, H, H, H, H, H, H, _],
-      [_, S, S, S, S, S, S, _],
-      [_, S, E, S, S, E, S, _],
-      [_, S, S, M, M, S, S, _],
-      [_, _, S, S, S, S, _, _],
-      [_, _, B, B, B, B, _, _],
-      [_, B, B, B, B, B, B, _],
-      [S, B, B, B, B, B, B, S],
-      [_, _, B, B, B, B, _, _],
-      [_, _, L, _, _, L, _, _],
-      [_, L, L, _, _, L, L, _],
-    ];
-  }
-
-  return [
-    [_, _, H, H, H, H, _, _],
-    [_, H, H, H, H, H, H, _],
-    [_, S, S, S, S, S, S, _],
-    [_, S, E, S, S, E, S, _],
-    [_, S, S, M, M, S, S, _],
-    [_, _, S, S, S, S, _, _],
-    [_, _, B, B, B, B, _, _],
-    [_, B, B, B, B, B, B, _],
-    [S, B, B, B, B, B, B, S],
-    [_, _, B, B, B, B, _, _],
-    [_, _, L, _, _, L, _, _],
-    [_, L, L, _, _, L, L, _],
-  ];
-}
-
-function spriteToBoxShadow(grid: PixelGrid, px: number): string {
-  const shadows: string[] = [];
-  for (let y = 0; y < grid.length; y++) {
-    const row = grid[y];
-    for (let x = 0; x < row.length; x++) {
-      const color = row[x];
-      if (color) {
-        shadows.push(`${x * px}px ${y * px}px 0 0 ${color}`);
-      }
-    }
-  }
-  return shadows.join(', ');
-}
+const DEFAULT_THEME: BeeTheme = {
+  emoji: '\uD83D\uDC1D',
+  borderColor: '#888',
+  glowColor: '#555',
+  label: 'BEE',
+};
 
 const STATUS_ANIMATION: Record<AgentStatus, string> = {
   idle: 'anim-bob',
@@ -90,38 +62,62 @@ interface AgentSpriteProps {
 }
 
 export function AgentSprite({ agent, status, pixelSize = 3 }: AgentSpriteProps) {
-  const colors = AGENT_COLORS[agent];
-  const isOrchestrator = agent === 'orchestrator';
-
-  const boxShadow = useMemo(
-    () => spriteToBoxShadow(buildSprite(colors, isOrchestrator), pixelSize),
-    [colors, isOrchestrator, pixelSize],
-  );
-
-  const spriteWidth = 8 * pixelSize;
-  const spriteHeight = 12 * pixelSize;
+  const theme = BEE_THEMES[agent] ?? DEFAULT_THEME;
+  const isQueen = agent === 'queen_bee';
   const animClass = STATUS_ANIMATION[status];
+
+  const size = isQueen ? pixelSize * 14 : pixelSize * 10;
 
   return (
     <div
       className={animClass}
       style={{
-        width: spriteWidth,
-        height: spriteHeight,
+        width: size,
+        height: size,
         position: 'relative',
         imageRendering: 'pixelated',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
       }}
     >
+      {/* Pixel border frame */}
       <div
         style={{
           position: 'absolute',
-          top: 0,
-          left: 0,
-          width: pixelSize,
-          height: pixelSize,
-          boxShadow,
+          inset: 0,
+          border: `${pixelSize}px solid ${theme.borderColor}`,
+          boxShadow: `0 0 ${pixelSize * 3}px ${theme.glowColor}, inset 0 0 ${pixelSize * 2}px ${theme.glowColor}40`,
+          background: `${theme.borderColor}10`,
+          imageRendering: 'pixelated',
         }}
       />
+
+      {/* Bee emoji */}
+      <span
+        style={{
+          fontSize: isQueen ? pixelSize * 6 : pixelSize * 5,
+          lineHeight: 1,
+          position: 'relative',
+          zIndex: 1,
+          filter: status === 'working' ? 'none' : status === 'error' ? 'grayscale(0.5)' : 'none',
+        }}
+      >
+        {theme.emoji}
+      </span>
+
+      {/* Working indicator */}
+      {status === 'working' && (
+        <div
+          className="anim-pulse"
+          style={{
+            position: 'absolute',
+            inset: -2,
+            border: `1px solid ${theme.borderColor}`,
+            pointerEvents: 'none',
+          }}
+        />
+      )}
     </div>
   );
 }

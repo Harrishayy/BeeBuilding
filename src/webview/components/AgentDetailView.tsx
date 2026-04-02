@@ -5,28 +5,28 @@ import { useAgentEvents } from '../hooks/useAgentEvents';
 import { useVSCode } from '../hooks/useVSCode';
 import type { AgentName, ArtifactRef } from '../../shared/types';
 
-const AGENT_DISPLAY: Record<AgentName, string> = {
-  planner: 'PLANNER',
-  coder: 'CODER',
-  tester: 'TESTER',
-  reviewer: 'REVIEWER',
-  orchestrator: 'ORCHESTRATOR',
+const AGENT_DISPLAY: Record<string, string> = {
+  scout_bee: '\uD83D\uDD0D SCOUT BEE',
+  worker_bee: '\uD83D\uDC77 WORKER BEE',
+  tester_bee: '\uD83E\uDDEA TESTER BEE',
+  guard_bee: '\uD83D\uDEE1\uFE0F GUARD BEE',
+  queen_bee: '\uD83D\uDC51 QUEEN BEE',
 };
 
-const FLOW: Record<AgentName, { from: AgentName | null; to: AgentName | null }> = {
-  planner: { from: null, to: 'coder' },
-  coder: { from: 'planner', to: 'tester' },
-  tester: { from: 'coder', to: 'reviewer' },
-  reviewer: { from: 'tester', to: 'orchestrator' },
-  orchestrator: { from: 'reviewer', to: null },
+const FLOW: Record<string, { from: AgentName | null; to: AgentName | null }> = {
+  scout_bee: { from: null, to: 'worker_bee' },
+  worker_bee: { from: 'scout_bee', to: 'tester_bee' },
+  tester_bee: { from: 'worker_bee', to: 'guard_bee' },
+  guard_bee: { from: 'tester_bee', to: 'queen_bee' },
+  queen_bee: { from: 'guard_bee', to: null },
 };
 
 const ARTIFACT_ICON: Record<string, string> = {
-  spec: '[S]',
-  code: '[C]',
-  test_report: '[T]',
-  review: '[R]',
-  diff: '[D]',
+  spec: '[\u2B21]',
+  code: '[\u2B22]',
+  test_report: '[\u2B23]',
+  review: '[\u2B24]',
+  diff: '[\u0394]',
 };
 
 function ArtifactItem({ artifact }: { artifact: ArtifactRef }) {
@@ -43,7 +43,7 @@ function ArtifactItem({ artifact }: { artifact: ArtifactRef }) {
     >
       <span
         className="pixel-text"
-        style={{ fontSize: 10, color: '#4dd0e1', flexShrink: 0 }}
+        style={{ fontSize: 10, color: '#FFB300', flexShrink: 0 }}
       >
         {ARTIFACT_ICON[artifact.type] ?? '[?]'}
       </span>
@@ -77,7 +77,7 @@ export function AgentDetailView() {
   const setView = usePipelineStore((s) => s.setView);
   const snapshot = usePipelineStore((s) => s.snapshot);
 
-  const agentKey: AgentName = selectedAgent ?? 'planner';
+  const agentKey: AgentName = selectedAgent ?? 'scout_bee';
   const { agentState, outputChunks } = useAgentEvents(agentKey);
 
   if (!selectedAgent || !agentState) {
@@ -93,12 +93,12 @@ export function AgentDetailView() {
           justifyContent: 'center',
         }}
       >
-        <span className="pixel-text">No agent selected</span>
+        <span className="pixel-text">No bee selected</span>
       </div>
     );
   }
 
-  const flow = FLOW[selectedAgent];
+  const flow = FLOW[selectedAgent] ?? { from: null, to: null };
   const gate = snapshot?.currentGate;
   const isAtGate = gate != null && gate.fromAgent === selectedAgent;
 
@@ -133,11 +133,11 @@ export function AgentDetailView() {
       <div
         style={{
           padding: 12,
-          borderBottom: '3px solid #333',
+          borderBottom: '3px solid #FFA000',
           display: 'flex',
           alignItems: 'center',
           gap: 12,
-          background: '#16213e',
+          background: '#111111',
           flexShrink: 0,
         }}
       >
@@ -146,10 +146,10 @@ export function AgentDetailView() {
           onClick={handleBack}
           style={{ fontSize: 10, padding: '4px 8px' }}
         >
-          {'<'} BACK
+          {'<'} HIVE
         </button>
-        <span className="pixel-text" style={{ fontSize: 12, flex: 1 }}>
-          {AGENT_DISPLAY[selectedAgent]}
+        <span className="pixel-text" style={{ fontSize: 12, flex: 1, color: '#FFB300' }}>
+          {AGENT_DISPLAY[selectedAgent] ?? selectedAgent}
         </span>
         <StatusBadge status={agentState.status} size={10} />
       </div>
@@ -165,31 +165,31 @@ export function AgentDetailView() {
           gap: 12,
         }}
       >
-        {/* Handoff info */}
+        {/* Pheromone handoff info */}
         <div style={{ display: 'flex', gap: 12 }}>
           {flow.from && (
             <div
               className="pixel-border-inset"
-              style={{ flex: 1, padding: 8, background: '#0f3460' }}
+              style={{ flex: 1, padding: 8, background: '#111111' }}
             >
               <div
                 className="pixel-text"
               style={{ fontSize: 9, color: '#888', marginBottom: 4 }}
             >
-              RECEIVED FROM
+              PHEROMONE FROM
             </div>
               <div
                 className="pixel-text"
-                style={{ fontSize: 10, color: '#4fc3f7' }}
+                style={{ fontSize: 10, color: '#FFB300' }}
               >
-                {AGENT_DISPLAY[flow.from]}
+                {AGENT_DISPLAY[flow.from] ?? flow.from}
               </div>
             </div>
           )}
           {flow.to && (
             <div
               className="pixel-border-inset"
-              style={{ flex: 1, padding: 8, background: '#0f3460' }}
+              style={{ flex: 1, padding: 8, background: '#111111' }}
             >
               <div
                 className="pixel-text"
@@ -199,9 +199,9 @@ export function AgentDetailView() {
             </div>
               <div
                 className="pixel-text"
-                style={{ fontSize: 10, color: '#ffa726' }}
+                style={{ fontSize: 10, color: '#FFA000' }}
               >
-                {AGENT_DISPLAY[flow.to]}
+                {AGENT_DISPLAY[flow.to] ?? flow.to}
               </div>
             </div>
           )}
@@ -211,7 +211,7 @@ export function AgentDetailView() {
         <div
           style={{
             background: '#111',
-            border: '2px solid #333',
+            border: '2px solid #FFA000',
             height: 12,
             imageRendering: 'pixelated',
           }}
@@ -220,7 +220,7 @@ export function AgentDetailView() {
             style={{
               width: `${agentState.progress}%`,
               height: '100%',
-              background: '#66bb6a',
+              background: '#FFB300',
               transition: 'width 0.3s',
             }}
           />
@@ -232,7 +232,7 @@ export function AgentDetailView() {
             className="pixel-text"
             style={{ fontSize: 10, color: '#888', marginBottom: 4 }}
           >
-            OUTPUT LOG
+            NECTAR LOG
           </div>
           <WorkLog chunks={outputChunks} />
         </div>
@@ -244,7 +244,7 @@ export function AgentDetailView() {
               className="pixel-text"
             style={{ fontSize: 10, color: '#888', marginBottom: 4 }}
           >
-            ARTIFACTS
+            HONEYCOMB CELLS
             </div>
             <div
               style={{
@@ -260,7 +260,7 @@ export function AgentDetailView() {
           </div>
         )}
 
-        {/* Gate approval inline */}
+        {/* Queen's Gate approval inline */}
         {isAtGate && (
           <div
             className="pixel-border"
@@ -270,13 +270,14 @@ export function AgentDetailView() {
               display: 'flex',
               flexDirection: 'column',
               gap: 8,
+              borderColor: '#FFB300',
             }}
           >
             <div
               className="pixel-text"
-              style={{ fontSize: 10, color: '#ffd54f' }}
+              style={{ fontSize: 10, color: '#FFB300' }}
             >
-              {'!!'} APPROVAL REQUIRED
+              {'\uD83D\uDC51'} QUEEN&apos;S GATE — APPROVAL REQUIRED
             </div>
             <div
               className="pixel-text"

@@ -1,7 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import * as vscode from 'vscode';
-import { AgentFlowSidebarProvider, AgentFlowPanel } from './views/AgentFlowViewProvider.js';
-import { AgentOrchestrator } from './agents/orchestrator.js';
+import { HiveMindSidebarProvider, HiveMindPanel } from './views/AgentFlowViewProvider.js';
+import { QueenOrchestrator } from './agents/orchestrator.js';
 import { PlanningEngine } from './agents/planning-engine.js';
 import { ArchitectureEngine } from './agents/architecture-engine.js';
 import { KeyStore } from './state/key-store.js';
@@ -12,7 +12,7 @@ import type { ExtensionMessage } from './shared/messages.js';
 import type { WebviewMessage } from './shared/messages.js';
 import type { AppPhase, PlanDocument, AgentArchitecture, PlanningMessage } from './shared/types.js';
 
-let orchestrator: AgentOrchestrator | undefined;
+let orchestrator: QueenOrchestrator | undefined;
 let keyStore: KeyStore;
 let planningEngine: PlanningEngine | undefined;
 let architectureEngine: ArchitectureEngine | undefined;
@@ -28,7 +28,7 @@ function broadcast(msg: ExtensionMessage, ...sinks: (MessageSink | undefined)[])
     try {
       s?.postMessage(msg);
     } catch (err) {
-      log.error('Extension', 'Failed to broadcast message', err);
+      log.error('Hive', 'Failed to broadcast pheromone signal', err);
     }
   }
 }
@@ -87,7 +87,7 @@ function restoreSessionToWebview(): void {
   currentPlan = saved.plan ?? undefined;
   currentArchitecture = saved.architecture ?? undefined;
 
-  log.info('Extension', `Restoring session: phase=${saved.phase}, msgs=${saved.planningMessages.length}`);
+  log.info('Hive', `Restoring colony session: phase=${saved.phase}, msgs=${saved.planningMessages.length}`);
 
   broadcastAll({
     type: 'sessionRestore',
@@ -101,44 +101,44 @@ function restoreSessionToWebview(): void {
 }
 
 export function activate(context: vscode.ExtensionContext): void {
-  log.info('Extension', 'Activating BeeBuilder extension');
+  log.info('Hive', 'Activating BeeBuilding extension — the hive awakens');
 
   keyStore = new KeyStore(context.secrets);
 
   try {
-    orchestrator = new AgentOrchestrator(context);
-    log.info('Extension', 'Orchestrator initialized');
+    orchestrator = new QueenOrchestrator(context);
+    log.info('Hive', 'Queen Bee initialized');
   } catch (err) {
-    log.error('Extension', 'Failed to initialize orchestrator', err);
+    log.error('Hive', 'Failed to initialize Queen Bee', err);
     vscode.window.showErrorMessage(
-      `BeeBuilder failed to initialize: ${err instanceof Error ? err.message : String(err)}`,
+      `BeeBuilding failed to initialize: ${err instanceof Error ? err.message : String(err)}`,
     );
     return;
   }
 
-  const sidebarProvider = new AgentFlowSidebarProvider(
+  const sidebarProvider = new HiveMindSidebarProvider(
     context.extensionUri,
     (msg) => handleWebviewMessage(msg),
   );
 
   context.subscriptions.push(
     vscode.window.registerWebviewViewProvider(
-      AgentFlowSidebarProvider.viewType,
+      HiveMindSidebarProvider.viewType,
       sidebarProvider,
     ),
   );
-  log.info('Extension', 'Sidebar view provider registered');
+  log.info('Hive', 'Hive Mind sidebar registered');
 
   const registerCommand = (id: string, handler: () => void | Promise<void>) => {
     context.subscriptions.push(
       vscode.commands.registerCommand(id, async () => {
-        log.debug('Extension', `Command invoked: ${id}`);
+        log.debug('Hive', `Command invoked: ${id}`);
         try {
           await handler();
         } catch (err) {
-          log.error('Extension', `Command "${id}" failed`, err);
+          log.error('Hive', `Command "${id}" failed`, err);
           vscode.window.showErrorMessage(
-            `BeeBuilder command failed: ${err instanceof Error ? err.message : String(err)}`,
+            `BeeBuilding command failed: ${err instanceof Error ? err.message : String(err)}`,
           );
         }
       }),
@@ -146,8 +146,8 @@ export function activate(context: vscode.ExtensionContext): void {
   };
 
   registerCommand('beebuilder.open', () => {
-    log.info('Extension', 'Opening BeeBuilder panel');
-    const panel = AgentFlowPanel.createOrShow(context.extensionUri, (msg) =>
+    log.info('Hive', 'Opening Hive Mind panel');
+    const panel = HiveMindPanel.createOrShow(context.extensionUri, (msg) =>
       handleWebviewMessage(msg),
     );
     wireOrchestrator(panel, sidebarProvider);
@@ -161,7 +161,7 @@ export function activate(context: vscode.ExtensionContext): void {
     const snap = orchestrator?.getSnapshot();
     if (snap) {
       const msg: ExtensionMessage = { type: 'pipelineState', payload: snap };
-      broadcast(msg, AgentFlowPanel.getInstance(), sidebarProvider);
+      broadcast(msg, HiveMindPanel.getInstance(), sidebarProvider);
     }
   });
 
@@ -171,11 +171,11 @@ export function activate(context: vscode.ExtensionContext): void {
   registerCommand('beebuilder.abortTask', () => orchestrator?.abort());
   registerCommand('beebuilder.showLog', () => log.show());
 
-  wireOrchestrator(AgentFlowPanel.getInstance(), sidebarProvider);
+  wireOrchestrator(HiveMindPanel.getInstance(), sidebarProvider);
 
   context.subscriptions.push({ dispose: () => log.dispose() });
 
-  log.info('Extension', 'BeeBuilder extension activated successfully');
+  log.info('Hive', 'BeeBuilding extension activated — all bees standing by');
 }
 
 function wireOrchestrator(...sinks: (MessageSink | undefined)[]): void {
@@ -205,9 +205,9 @@ function wireOrchestrator(...sinks: (MessageSink | undefined)[]): void {
   });
 
   orchestrator.on('error', (err) => {
-    log.error('Extension', `Orchestrator error: ${err.message} (recoverable: ${err.recoverable})`);
+    log.error('Hive', `Queen Bee error: ${err.message} (recoverable: ${err.recoverable})`);
     if (!err.recoverable) {
-      vscode.window.showErrorMessage(`BeeBuilder: ${err.message}`);
+      vscode.window.showErrorMessage(`BeeBuilding: ${err.message}`);
     }
     broadcast(
       { type: 'error', payload: { message: err.message, recoverable: err.recoverable } },
@@ -217,7 +217,7 @@ function wireOrchestrator(...sinks: (MessageSink | undefined)[]): void {
 }
 
 async function handleWebviewMessage(message: WebviewMessage): Promise<void> {
-  log.debug('Extension', `Webview message received: ${message.type}`);
+  log.debug('Hive', `Pheromone signal received: ${message.type}`);
 
   try {
     switch (message.type) {
@@ -472,7 +472,7 @@ async function handleWebviewMessage(message: WebviewMessage): Promise<void> {
           const issues = await client.listIssues(repoInfo.owner, repoInfo.repo);
           broadcastAll({ type: 'issuesList', payload: issues });
         } catch (err) {
-          log.error('Extension', 'Failed to fetch issues', err);
+          log.error('Hive', 'Failed to fetch issues', err);
         }
         break;
       }
@@ -494,25 +494,25 @@ async function handleWebviewMessage(message: WebviewMessage): Promise<void> {
             payload: { title: issue.title, body: issue.body, labels: issue.labels },
           });
         } catch (err) {
-          log.error('Extension', 'Failed to import issue', err);
+          log.error('Hive', 'Failed to import issue', err);
         }
         break;
       }
 
       default:
-        log.warn('Extension', `Unhandled webview message type: ${(message as { type: string }).type}`);
+        log.warn('Hive', `Unhandled pheromone signal: ${(message as { type: string }).type}`);
     }
   } catch (err) {
-    log.error('Extension', `Error handling webview message "${message.type}"`, err);
+    log.error('Hive', `Error handling pheromone signal "${message.type}"`, err);
   }
 }
 
 export function deactivate(): void {
-  log.info('Extension', 'Deactivating BeeBuilder extension');
+  log.info('Hive', 'Deactivating BeeBuilding — bees returning to hibernation');
   try {
     orchestrator?.dispose();
   } catch (err) {
-    log.error('Extension', 'Error during deactivation', err);
+    log.error('Hive', 'Error during deactivation', err);
   }
   orchestrator = undefined;
 }
