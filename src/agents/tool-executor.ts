@@ -6,6 +6,7 @@ import { log } from '../util/logger.js';
 
 const execAsync = promisify(exec);
 const TAG = 'ToolExecutor';
+const MAX_RESULT_CHARS = 12_000;
 
 interface ReviewComment {
   file: string;
@@ -15,10 +16,14 @@ interface ReviewComment {
 }
 
 export class ToolExecutor {
+  private readonly worktreePath: string;
+  private readonly projectRoot: string | null;
   private reviewComments: ReviewComment[] = [];
 
-  constructor(private readonly worktreePath: string) {
-    log.debug(TAG, `Initialized with worktree: ${worktreePath}`);
+  constructor(worktreePath: string, projectRoot?: string) {
+    this.worktreePath = worktreePath;
+    this.projectRoot = projectRoot ?? null;
+    log.debug(TAG, `Initialized with worktree: ${worktreePath}${projectRoot ? `, mirroring to: ${projectRoot}` : ''}`);
   }
 
   async execute(toolName: string, input: Record<string, unknown>): Promise<string> {
@@ -88,13 +93,39 @@ export class ToolExecutor {
     return resolved;
   }
 
+  private truncateHeadTail(text: string, limit: number, headRatio = 0.8): string {
+    if (text.length <= limit) return text;
+    const headLen = Math.floor(limit * headRatio);
+    const tailLen = limit - headLen;
+    const omitted = text.length - headLen - tailLen;
+    return (
+      text.slice(0, headLen) +
+      `\n\n...[truncated ${omitted} chars]...\n\n` +
+      text.slice(text.length - tailLen)
+    );
+  }
+
+  private truncateLines(text: string, limit: number, kind: string): string {
+    if (text.length <= limit) return text;
+    const lines = text.split('\n');
+    let kept = '';
+    let keptCount = 0;
+    for (const line of lines) {
+      if (kept.length + line.length + 1 > limit) break;
+      kept += (keptCount > 0 ? '\n' : '') + line;
+      keptCount++;
+    }
+    const omittedLines = lines.length - keptCount;
+    return kept + `\n\n...[${omittedLines} more ${kind} truncated]`;
+  }
+
   private async readFile(filePath: string): Promise<string> {
     const resolved = this.validatePath(filePath);
 
     try {
       const content = await fs.promises.readFile(resolved, 'utf-8');
       log.debug(TAG, `read_file: ${filePath} (${content.length} chars)`);
-      return content;
+      return this.truncateHeadTail(content, MAX_RESULT_CHARS);
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
       throw new Error(`Failed to read file "${filePath}": ${message}`);
@@ -108,11 +139,24 @@ export class ToolExecutor {
       await fs.promises.mkdir(path.dirname(resolved), { recursive: true });
       await fs.promises.writeFile(resolved, content, 'utf-8');
       log.debug(TAG, `write_file: ${filePath} (${content.length} chars written)`);
-      return `Successfully wrote ${content.length} characters to ${filePath}`;
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
       throw new Error(`Failed to write file "${filePath}": ${message}`);
     }
+
+    if (this.projectRoot) {
+      try {
+        const normalized = path.normalize(filePath);
+        const mirrorPath = path.resolve(this.projectRoot, normalized);
+        await fs.promises.mkdir(path.dirname(mirrorPath), { recursive: true });
+        await fs.promises.writeFile(mirrorPath, content, 'utf-8');
+        log.debug(TAG, `write_file: mirrored ${filePath} to workspace`);
+      } catch (err) {
+        log.warn(TAG, `Failed to mirror ${filePath} to workspace (non-fatal)`, err);
+      }
+    }
+
+    return `Successfully wrote ${content.length} characters to ${filePath}`;
   }
 
   private async runCommand(command: string): Promise<string> {
@@ -128,7 +172,7 @@ export class ToolExecutor {
       if (stderr) {
         result += `\n[stderr]:\n${stderr}`;
       }
-      return result || '(no output)';
+      return this.truncateHeadTail(result || '(no output)', MAX_RESULT_CHARS, 0.6);
     } catch (err) {
       const execErr = err as {
         stdout?: string;
@@ -141,7 +185,11 @@ export class ToolExecutor {
       if (execErr.stderr) result += `\n[stderr]:\n${execErr.stderr}`;
       if (!result) result = `Command failed: ${execErr.message}`;
       log.warn(TAG, `run_command exited with code ${execErr.code ?? 1}`);
-      return `[exit code: ${execErr.code ?? 1}]\n${result}`;
+      return this.truncateHeadTail(
+        `[exit code: ${execErr.code ?? 1}]\n${result}`,
+        MAX_RESULT_CHARS,
+        0.6,
+      );
     }
   }
 
@@ -162,7 +210,7 @@ export class ToolExecutor {
         timeout: 30_000,
         maxBuffer: 5 * 1024 * 1024,
       });
-      return stdout || 'No matches found.';
+      return this.truncateLines(stdout || 'No matches found.', MAX_RESULT_CHARS, 'matches');
     } catch (err) {
       const execErr = err as { code?: number; stdout?: string };
       if (execErr.code === 1) {
@@ -176,9 +224,9 @@ export class ToolExecutor {
           timeout: 30_000,
           maxBuffer: 5 * 1024 * 1024,
         });
-        return stdout || 'No matches found.';
+        return this.truncateLines(stdout || 'No matches found.', MAX_RESULT_CHARS, 'matches');
       } catch {
-        return execErr.stdout || 'No matches found.';
+        return this.truncateLines(execErr.stdout || 'No matches found.', MAX_RESULT_CHARS, 'matches');
       }
     }
   }
@@ -195,7 +243,7 @@ export class ToolExecutor {
           maxBuffer: 5 * 1024 * 1024,
         },
       );
-      return stdout || '(empty directory)';
+      return this.truncateLines(stdout || '(empty directory)', MAX_RESULT_CHARS, 'files');
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
       throw new Error(`Failed to list files in "${directory}": ${message}`);

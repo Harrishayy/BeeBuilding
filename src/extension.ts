@@ -203,6 +203,10 @@ function wireOrchestrator(...sinks: (MessageSink | undefined)[]): void {
     broadcast({ type: 'agentOutput', payload: data }, ...sinks);
   });
 
+  orchestrator.on('clearAgentOutputs', () => {
+    broadcast({ type: 'clearAgentOutputs' }, ...sinks);
+  });
+
   orchestrator.on('gatePending', (info) => {
     broadcast({ type: 'gatePending', payload: info }, ...sinks);
   });

@@ -74,12 +74,63 @@ Determine the agent architecture now.`;
       if (!jsonMatch) throw new Error('No JSON in response');
 
       const parsed = JSON.parse(jsonMatch[0]) as AgentArchitecture;
+      const errors = this.validateArchitecture(parsed);
+      if (errors.length > 0) {
+        log.warn(TAG, `Architecture validation failed: ${errors.join('; ')}`);
+        return this.fallbackArchitecture(plan);
+      }
+
       log.info(TAG, `Architecture: ${parsed.agents.length} agents, ${parsed.executionOrder.length} groups`);
       return parsed;
     } catch (err) {
       log.error(TAG, 'Failed to parse architecture response', err);
       return this.fallbackArchitecture(plan);
     }
+  }
+
+  private validateArchitecture(arch: AgentArchitecture): string[] {
+    const errors: string[] = [];
+
+    if (!Array.isArray(arch.agents) || arch.agents.length === 0) {
+      errors.push('agents must be a non-empty array');
+      return errors;
+    }
+
+    const agentIds = new Set<string>();
+    for (let i = 0; i < arch.agents.length; i++) {
+      const a = arch.agents[i];
+      if (!a.id || typeof a.id !== 'string') {
+        errors.push(`agents[${i}] missing id`);
+      } else if (agentIds.has(a.id)) {
+        errors.push(`duplicate agent id "${a.id}"`);
+      } else {
+        agentIds.add(a.id);
+      }
+      if (!a.name || typeof a.name !== 'string') errors.push(`agents[${i}] missing name`);
+      if (!a.role || typeof a.role !== 'string') errors.push(`agents[${i}] missing role`);
+      if (!a.systemPrompt || typeof a.systemPrompt !== 'string') errors.push(`agents[${i}] missing systemPrompt`);
+      if (!Array.isArray(a.tools) || a.tools.length === 0) errors.push(`agents[${i}] must have at least one tool`);
+      if (!a.model || typeof a.model !== 'string') errors.push(`agents[${i}] missing model`);
+    }
+
+    if (!Array.isArray(arch.executionOrder) || arch.executionOrder.length === 0) {
+      errors.push('executionOrder must be a non-empty array');
+    } else {
+      for (let g = 0; g < arch.executionOrder.length; g++) {
+        const group = arch.executionOrder[g];
+        if (!Array.isArray(group) || group.length === 0) {
+          errors.push(`executionOrder[${g}] must be a non-empty array`);
+          continue;
+        }
+        for (const id of group) {
+          if (!agentIds.has(id)) {
+            errors.push(`executionOrder[${g}] references unknown agent id "${id}"`);
+          }
+        }
+      }
+    }
+
+    return errors;
   }
 
   private fallbackArchitecture(plan: PlanDocument): AgentArchitecture {

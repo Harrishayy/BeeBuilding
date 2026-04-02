@@ -65,7 +65,8 @@ export type ExtensionMessage =
         architecture: AgentArchitecture | null;
       };
     }
-  | { type: 'workflowList'; payload: WorkflowSummary[] };
+  | { type: 'workflowList'; payload: WorkflowSummary[] }
+  | { type: 'clearAgentOutputs' };
 
 // Webview -> Extension Host
 export type WebviewMessage =

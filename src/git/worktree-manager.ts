@@ -11,6 +11,7 @@ export class WorktreeManager {
   private git: SimpleGit;
   private projectRoot: string;
   private branches: Map<AgentName, string> = new Map();
+  private baseShas: Map<AgentName, string> = new Map();
 
   constructor(projectRoot: string) {
     this.projectRoot = projectRoot;
@@ -18,10 +19,17 @@ export class WorktreeManager {
     log.info(TAG, `Initialized for project: ${projectRoot}`);
   }
 
+  getProjectRoot(): string {
+    return this.projectRoot;
+  }
+
   async createWorktree(agentName: AgentName, sessionId: string): Promise<string> {
     const worktreePath = this.getWorktreePath(agentName);
     const branchName = `beebuilding/${agentName}/${sessionId}`;
     log.info(TAG, `Creating worktree: ${worktreePath} (branch=${branchName})`);
+
+    const baseSha = await this.git.revparse(['HEAD']);
+    this.baseShas.set(agentName, baseSha.trim());
 
     try {
       await this.git.raw([
@@ -31,7 +39,7 @@ export class WorktreeManager {
         '-b',
         branchName,
       ]);
-      log.info(TAG, `Worktree created for ${agentName}`);
+      log.info(TAG, `Worktree created for ${agentName} (base=${baseSha.trim().slice(0, 8)})`);
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
       if (message.includes('already exists')) {
@@ -94,6 +102,29 @@ export class WorktreeManager {
     this.branches.delete(agentName);
   }
 
+  async commitWorktreeChanges(agentName: AgentName, sessionId: string): Promise<boolean> {
+    const worktreePath = this.getWorktreePath(agentName);
+    log.info(TAG, `Committing changes in worktree for ${agentName}: ${worktreePath}`);
+
+    const wtGit = simpleGit(worktreePath);
+    try {
+      const status = await wtGit.status();
+      if (status.isClean()) {
+        log.info(TAG, `No changes to commit for ${agentName}`);
+        return false;
+      }
+
+      await wtGit.add('-A');
+      await wtGit.commit(`beebuilding: ${agentName} changes (session ${sessionId})`);
+      const commitLog = await wtGit.log({ maxCount: 1 });
+      log.info(TAG, `Committed ${status.files.length} file(s) for ${agentName} (${commitLog.latest?.hash?.slice(0, 8) ?? 'unknown'})`);
+      return true;
+    } catch (err) {
+      log.error(TAG, `Failed to commit worktree changes for ${agentName}`, err);
+      throw new Error(`Failed to commit changes for ${agentName}: ${err instanceof Error ? err.message : String(err)}`);
+    }
+  }
+
   async removeWorktree(agentName: AgentName): Promise<void> {
     const worktreePath = this.getWorktreePath(agentName);
     log.debug(TAG, `Removing worktree for ${agentName}: ${worktreePath}`);
@@ -119,23 +150,18 @@ export class WorktreeManager {
 
   async getDiff(agentName: AgentName, sessionId: string): Promise<string> {
     const branchName = `beebuilding/${agentName}/${sessionId}`;
-    log.debug(TAG, `Getting diff for ${agentName} (branch=${branchName})`);
+    const baseSha = this.baseShas.get(agentName);
+    log.debug(TAG, `Getting diff for ${agentName} (branch=${branchName}, base=${baseSha?.slice(0, 8) ?? 'unknown'})`);
 
+    const base = baseSha ?? 'HEAD';
     try {
-      const result = await this.git.diff(['main', branchName]);
+      const result = await this.git.diff([base, branchName]);
       log.debug(TAG, `Diff for ${agentName}: ${result.length} chars`);
       return result;
-    } catch (mainErr) {
-      log.debug(TAG, `Failed to diff against main, trying master`, mainErr);
-      try {
-        const result = await this.git.diff(['master', branchName]);
-        log.debug(TAG, `Diff for ${agentName} (vs master): ${result.length} chars`);
-        return result;
-      } catch (masterErr) {
-        const message = masterErr instanceof Error ? masterErr.message : String(masterErr);
-        log.error(TAG, `Failed to get diff for ${agentName}`, masterErr);
-        throw new Error(`Failed to get diff for ${agentName}: ${message}`);
-      }
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      log.error(TAG, `Failed to get diff for ${agentName}`, err);
+      throw new Error(`Failed to get diff for ${agentName}: ${message}`);
     }
   }
 
@@ -150,13 +176,14 @@ export class WorktreeManager {
     try {
       switch (strategy) {
         case 'squash':
+        case 'rebase':
+          if (strategy === 'rebase') {
+            log.warn(TAG, `Rebase strategy is unsafe; falling back to squash for ${agentName}`);
+          }
           await this.git.merge([branchName, '--squash']);
           await this.git.commit(
             `beebuilding: ${agentName} changes (session ${sessionId})`,
           );
-          break;
-        case 'rebase':
-          await this.git.rebase([branchName]);
           break;
         case 'merge':
           await this.git.merge([branchName, '--no-ff', '-m',

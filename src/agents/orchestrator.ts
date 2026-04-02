@@ -54,6 +54,7 @@ function withTimeout<T>(promise: Promise<T>, ms: number, label: string): Promise
 interface OrchestratorEvents {
   stateChange: (snapshot: PipelineSnapshot) => void;
   agentOutput: (data: { agent: AgentName; chunk: string; timestamp: number }) => void;
+  clearAgentOutputs: () => void;
   gatePending: (info: GatePendingInfo) => void;
   gateResolved: (data: { stage: PipelineStage; resolution: 'approved' | 'rejected' }) => void;
   timelineEvent: (event: TimelineEvent) => void;
@@ -118,6 +119,7 @@ export class QueenOrchestrator extends EventEmitter<OrchestratorEvents> {
   private agentOutputs: Map<AgentName, string> = new Map();
   private paused = false;
   private aborted = false;
+  private _pipelineRunning = false;
   private rejectionFeedback = '';
   private gateResolve: ((approved: boolean) => void) | null = null;
   private pauseResolve: (() => void) | null = null;
@@ -256,6 +258,12 @@ export class QueenOrchestrator extends EventEmitter<OrchestratorEvents> {
   }
 
   async submitTaskWithArchitecture(task: TaskDefinition, architecture: AgentArchitecture, plan?: PlanDocument): Promise<void> {
+    if (this._pipelineRunning) {
+      log.warn(TAG, 'submitTaskWithArchitecture called while pipeline already running — ignoring');
+      this.emit('error', { message: 'A pipeline is already running. Wait for it to finish or abort first.', recoverable: true });
+      return;
+    }
+
     log.info(TAG, `Dynamic nectar run: "${task.title}" with ${architecture.agents.length} bees`);
 
     if (!this.sessionConfig) {
@@ -263,16 +271,23 @@ export class QueenOrchestrator extends EventEmitter<OrchestratorEvents> {
     }
 
     this.currentPlan = plan ?? null;
+    this.agentOutputs.clear();
+    this._pipelineRunning = true;
+    this.aborted = false;
     this.fsm.setDynamicAgents(architecture.agents, architecture.executionOrder.length);
 
-    this.runDynamicPipeline(task, architecture).catch((err: unknown) => {
-      const message = err instanceof Error ? err.message : String(err);
-      log.error(TAG, `Dynamic swarm flow failed: ${message}`, err);
-      this.fsm.setError(message);
-      this.fsm.transition('error');
-      this.emitTimelineEvent('pipeline_failed', null, this.fsm.getStage(), message);
-      this.emit('error', { message, recoverable: false });
-    });
+    this.runDynamicPipeline(task, architecture)
+      .catch((err: unknown) => {
+        const message = err instanceof Error ? err.message : String(err);
+        log.error(TAG, `Dynamic swarm flow failed: ${message}`, err);
+        this.fsm.setError(message);
+        this.fsm.transition('error');
+        this.emitTimelineEvent('pipeline_failed', null, this.fsm.getStage(), message);
+        this.emit('error', { message, recoverable: false });
+      })
+      .finally(() => {
+        this._pipelineRunning = false;
+      });
   }
 
   approveCurrentGate(): void {
@@ -589,28 +604,45 @@ export class QueenOrchestrator extends EventEmitter<OrchestratorEvents> {
     const systemPrompt = this.loadSystemPrompt(stageInfo.agent);
     log.debug(TAG, `Flight plan loaded for ${stageInfo.agent} (${systemPrompt.length} chars)`);
 
-    const toolExecutor = new ToolExecutor(worktreePath);
+    const projectRoot = this.worktreeManager.getProjectRoot();
+    const toolExecutor = new ToolExecutor(worktreePath, projectRoot);
     const tools = this.getToolsForAgent(stageInfo.agent);
     const userMessage = this.buildAgentContext(stageInfo.agent, task);
 
-    log.debug(TAG, `Dispatching ${stageInfo.agent} to Claude API (model=${this.sessionConfig.agents[stageInfo.agent].model})`);
+    const agentModel = this.sessionConfig.agents[stageInfo.agent].model;
+    log.debug(TAG, `Dispatching ${stageInfo.agent} to Claude API (model=${agentModel})`);
     const outputChunks: string[] = [];
 
+    const emitChunk = (chunk: string) => {
+      outputChunks.push(chunk);
+      this.fsm.updateAgentState(stageInfo.agent, { outputChunks: [...outputChunks] });
+      this.emit('agentOutput', { agent: stageInfo.agent, chunk, timestamp: Date.now() });
+    };
+
+    emitChunk(`[status] ${stageInfo.agent} initialized, calling Claude API (model=${agentModel})...\n`);
+
     const output = await this.claudeClient.createAgentMessage({
-      model: this.sessionConfig.agents[stageInfo.agent].model,
+      model: agentModel,
       systemPrompt,
       messages: [{ role: 'user', content: userMessage }],
       tools,
       onChunk: (chunk) => {
-        outputChunks.push(chunk);
-        this.fsm.updateAgentState(stageInfo.agent, { outputChunks: [...outputChunks] });
-        this.emit('agentOutput', {
-          agent: stageInfo.agent,
-          chunk,
-          timestamp: Date.now(),
-        });
+        emitChunk(chunk);
       },
       onToolUse: async (toolName, input) => {
+        const inputSummary = toolName === 'write_file'
+          ? (input.path as string ?? '')
+          : toolName === 'read_file'
+            ? (input.path as string ?? '')
+            : toolName === 'run_command'
+              ? (input.command as string ?? '').slice(0, 80)
+              : toolName === 'search_codebase'
+                ? (input.query as string ?? '')
+                : toolName === 'list_files'
+                  ? (input.directory as string ?? '.')
+                  : JSON.stringify(input).slice(0, 60);
+        emitChunk(`[tool: ${toolName}] ${inputSummary}\n`);
+
         log.debug(TAG, `${stageInfo.agent} using tool: ${toolName}`, input);
         this.emitTimelineEvent(
           'tool_call',
@@ -621,8 +653,11 @@ export class QueenOrchestrator extends EventEmitter<OrchestratorEvents> {
         try {
           const result = await toolExecutor.execute(toolName, input);
           log.debug(TAG, `${stageInfo.agent} tool ${toolName} returned (${result.length} chars)`);
+          emitChunk(`[tool: ${toolName}] done (${result.length} chars)\n`);
           return result;
         } catch (err) {
+          const errMsg = err instanceof Error ? err.message : String(err);
+          emitChunk(`[tool: ${toolName}] ERROR: ${errMsg}\n`);
           log.error(TAG, `${stageInfo.agent} tool ${toolName} failed`, err);
           throw err;
         }
@@ -631,6 +666,15 @@ export class QueenOrchestrator extends EventEmitter<OrchestratorEvents> {
 
     log.info(TAG, `${stageInfo.agent} produced ${output.length} chars of nectar`);
     this.agentOutputs.set(stageInfo.agent, output);
+
+    try {
+      const committed = await this.worktreeManager.commitWorktreeChanges(stageInfo.agent, this.sessionConfig.id);
+      if (committed) {
+        emitChunk(`[status] Changes committed to branch for ${stageInfo.agent}\n`);
+      }
+    } catch (err) {
+      log.error(TAG, `Failed to commit worktree changes for ${stageInfo.agent}`, err);
+    }
 
     try {
       this.sessionManager.storeAgentOutput(
@@ -655,18 +699,21 @@ export class QueenOrchestrator extends EventEmitter<OrchestratorEvents> {
       parts.push(`**Estimated Complexity**: ${task.estimatedComplexity}`);
     }
 
+    const capOutput = (text: string, limit: number) =>
+      text.length > limit ? text.slice(0, limit) + '\n...(truncated)' : text;
+
     switch (agent) {
       case 'worker_bee': {
         const scoutOutput = this.agentOutputs.get('scout_bee');
         if (scoutOutput) {
-          parts.push(`\n## Scout Bee Specification\n${scoutOutput}`);
+          parts.push(`\n## Scout Bee Specification\n${capOutput(scoutOutput, 4000)}`);
         }
         break;
       }
       case 'tester_bee': {
         const workerOutput = this.agentOutputs.get('worker_bee');
         if (workerOutput) {
-          parts.push(`\n## Worker Bee Implementation Summary\n${workerOutput}`);
+          parts.push(`\n## Worker Bee Implementation Summary\n${capOutput(workerOutput, 2000)}`);
         }
         break;
       }
@@ -674,10 +721,10 @@ export class QueenOrchestrator extends EventEmitter<OrchestratorEvents> {
         const workerOutput = this.agentOutputs.get('worker_bee');
         const testerOutput = this.agentOutputs.get('tester_bee');
         if (workerOutput) {
-          parts.push(`\n## Implementation Summary\n${workerOutput}`);
+          parts.push(`\n## Implementation Summary\n${capOutput(workerOutput, 2000)}`);
         }
         if (testerOutput) {
-          parts.push(`\n## Test Results\n${testerOutput}`);
+          parts.push(`\n## Test Results\n${capOutput(testerOutput, 2000)}`);
         }
         break;
       }
@@ -887,6 +934,7 @@ export class QueenOrchestrator extends EventEmitter<OrchestratorEvents> {
     log.info(TAG, `Dynamic swarm flow for: "${task.title}" with ${architecture.agents.length} bees`);
     await this.ensureClaudeClient();
 
+    this.emit('clearAgentOutputs');
     this.fsm.setTask(task);
     this.fsm.setStage('dynamic_group');
     this.emitTimelineEvent('pipeline_started', null, 'dynamic_group', `Dynamic swarm flow: ${task.title}`);
@@ -1015,6 +1063,8 @@ export class QueenOrchestrator extends EventEmitter<OrchestratorEvents> {
       ),
     );
 
+    this.rejectionFeedback = '';
+
     const failures: string[] = [];
     let hasSuccessfulWriter = false;
 
@@ -1063,46 +1113,94 @@ export class QueenOrchestrator extends EventEmitter<OrchestratorEvents> {
       throw new Error('Queen Bee not fully initialized');
     }
 
+    const outputChunks: string[] = [];
+    const emitChunk = (chunk: string) => {
+      outputChunks.push(chunk);
+      this.fsm.updateAgentState(spec.id, { outputChunks: [...outputChunks] });
+      this.emit('agentOutput', { agent: spec.id, chunk, timestamp: Date.now() });
+    };
+
+    emitChunk(`[status] Initializing workspace for ${spec.name}...\n`);
+
     let worktreePath: string;
     try {
       worktreePath = await this.worktreeManager.createWorktree(spec.id, this.sessionConfig.id);
     } catch (err) {
-      throw new Error(`Worktree creation failed for ${spec.id}: ${err instanceof Error ? err.message : String(err)}`);
+      const errMsg = err instanceof Error ? err.message : String(err);
+      emitChunk(`[error] Workspace creation failed: ${errMsg}\n`);
+      throw new Error(`Worktree creation failed for ${spec.id}: ${errMsg}`);
     }
 
-    const toolExecutor = new ToolExecutor(worktreePath);
+    const projectRoot = this.worktreeManager.getProjectRoot();
+    const toolExecutor = new ToolExecutor(worktreePath, projectRoot);
     const tools = this.resolveToolsForSpec(spec);
     const userMessage = this.buildDynamicAgentContext(spec, task, architecture, groupIdx);
-    const outputChunks: string[] = [];
 
-    log.debug(TAG, `Calling Claude API for dynamic agent ${spec.id} (model=${spec.model})`);
+    const resolvedModel = this.resolveModelForSpec(spec);
+    emitChunk(`[status] Calling Claude API (model=${resolvedModel}, tools=${tools.length})...\n`);
+    log.debug(TAG, `Calling Claude API for dynamic agent ${spec.id} (model=${resolvedModel})`);
 
-    const output = await this.claudeClient.createAgentMessage({
-      model: spec.model,
-      systemPrompt: spec.systemPrompt,
-      messages: [{ role: 'user', content: userMessage }],
-      tools,
-      onChunk: (chunk) => {
-        outputChunks.push(chunk);
-        this.fsm.updateAgentState(spec.id, { outputChunks: [...outputChunks] });
-        this.emit('agentOutput', { agent: spec.id, chunk, timestamp: Date.now() });
-      },
-      onToolUse: async (toolName, input) => {
-        log.debug(TAG, `${spec.id} tool call: ${toolName}`, input);
-        this.emitTimelineEvent('tool_call', spec.id, 'dynamic_group', `Tool: ${toolName}`);
-        try {
-          const result = await toolExecutor.execute(toolName, input);
-          log.debug(TAG, `${spec.id} tool ${toolName} returned (${result.length} chars)`);
-          return result;
-        } catch (err) {
-          log.error(TAG, `${spec.id} tool ${toolName} failed`, err);
-          throw err;
-        }
-      },
-    });
+    let output: string;
+    try {
+      output = await this.claudeClient.createAgentMessage({
+        model: resolvedModel,
+        systemPrompt: spec.systemPrompt,
+        messages: [{ role: 'user', content: userMessage }],
+        tools,
+        onChunk: (chunk) => {
+          emitChunk(chunk);
+        },
+        onToolUse: async (toolName, input) => {
+          const inputSummary = toolName === 'write_file'
+            ? (input.path as string ?? '')
+            : toolName === 'read_file'
+              ? (input.path as string ?? '')
+              : toolName === 'run_command'
+                ? (input.command as string ?? '').slice(0, 80)
+                : toolName === 'search_codebase'
+                  ? (input.query as string ?? '')
+                  : toolName === 'list_files'
+                    ? (input.directory as string ?? '.')
+                    : JSON.stringify(input).slice(0, 60);
+          emitChunk(`[tool: ${toolName}] ${inputSummary}\n`);
 
+          log.debug(TAG, `${spec.id} tool call: ${toolName}`, input);
+          this.emitTimelineEvent('tool_call', spec.id, 'dynamic_group', `Tool: ${toolName}`);
+          try {
+            const result = await toolExecutor.execute(toolName, input);
+            log.debug(TAG, `${spec.id} tool ${toolName} returned (${result.length} chars)`);
+            emitChunk(`[tool: ${toolName}] done (${result.length} chars)\n`);
+            return result;
+          } catch (err) {
+            const errMsg = err instanceof Error ? err.message : String(err);
+            emitChunk(`[tool: ${toolName}] ERROR: ${errMsg}\n`);
+            log.error(TAG, `${spec.id} tool ${toolName} failed`, err);
+            throw err;
+          }
+        },
+      });
+    } catch (err) {
+      const errMsg = err instanceof Error ? err.message : String(err);
+      emitChunk(`\n[error] Claude API call failed: ${errMsg}\n`);
+      throw err;
+    }
+
+    emitChunk(`\n[status] Agent completed (${output.length} chars output)\n`);
     log.info(TAG, `${spec.id} produced ${output.length} chars of output`);
     this.agentOutputs.set(spec.id, output);
+
+    try {
+      const committed = await this.worktreeManager.commitWorktreeChanges(spec.id, this.sessionConfig.id);
+      if (committed) {
+        emitChunk(`[status] Changes committed to branch for ${spec.name}\n`);
+      } else {
+        emitChunk(`[status] No file changes to commit for ${spec.name}\n`);
+      }
+    } catch (err) {
+      const errMsg = err instanceof Error ? err.message : String(err);
+      emitChunk(`[warning] Failed to commit worktree changes: ${errMsg}\n`);
+      log.error(TAG, `Failed to commit worktree changes for ${spec.id}`, err);
+    }
 
     try {
       this.sessionManager.storeAgentOutput(this.sessionConfig.id, spec.id, output);
@@ -1132,14 +1230,8 @@ export class QueenOrchestrator extends EventEmitter<OrchestratorEvents> {
       const plan = this.currentPlan;
       parts.push(`\n## Implementation Plan`);
       parts.push(`**Summary**: ${plan.summary}`);
-      if (plan.requirements.length > 0) {
-        parts.push(`\n### Requirements\n${plan.requirements.map((r, i) => `${i + 1}. ${r}`).join('\n')}`);
-      }
-      if (plan.fileChanges.length > 0) {
+      if (spec.tools.includes('write_file') && plan.fileChanges.length > 0) {
         parts.push(`\n### File Changes\n${plan.fileChanges.map((f) => `- **${f.action}** \`${f.path}\`: ${f.description}`).join('\n')}`);
-      }
-      if (plan.risks.length > 0) {
-        parts.push(`\n### Risks\n${plan.risks.map((r) => `- ${r}`).join('\n')}`);
       }
     }
 
@@ -1160,17 +1252,32 @@ export class QueenOrchestrator extends EventEmitter<OrchestratorEvents> {
     }
 
     if (priorGroupIds.length > 0) {
-      const priorOutputs: string[] = [];
-      for (const priorId of priorGroupIds) {
+      const PER_AGENT_CAP = 1500;
+      const TOTAL_BUDGET = 4000;
+      const rawOutputs: Array<{ label: string; text: string }> = [];
+      for (const priorId of [...priorGroupIds].reverse()) {
         const output = this.agentOutputs.get(priorId);
         if (output) {
           const priorSpec = architecture.agents.find((a) => a.id === priorId);
           const label = priorSpec ? `${priorSpec.name} (${priorSpec.role})` : priorId;
-          const truncated = output.length > 4000 ? output.slice(0, 4000) + '\n...(truncated)' : output;
-          priorOutputs.push(`### ${label}\n${truncated}`);
+          const capped = output.length > PER_AGENT_CAP
+            ? output.slice(0, PER_AGENT_CAP) + '\n...(truncated)'
+            : output;
+          rawOutputs.push({ label, text: capped });
         }
       }
+      let budgetLeft = TOTAL_BUDGET;
+      const priorOutputs: string[] = [];
+      for (const entry of rawOutputs) {
+        if (budgetLeft <= 0) break;
+        const slice = entry.text.length > budgetLeft
+          ? entry.text.slice(0, budgetLeft) + '\n...(budget limit)'
+          : entry.text;
+        budgetLeft -= slice.length;
+        priorOutputs.push(`### ${entry.label}\n${slice}`);
+      }
       if (priorOutputs.length > 0) {
+        priorOutputs.reverse();
         parts.push(`\n## Prior Agent Outputs\n${priorOutputs.join('\n\n')}`);
       }
     }
@@ -1179,7 +1286,6 @@ export class QueenOrchestrator extends EventEmitter<OrchestratorEvents> {
       parts.push(
         `\n## Rejection Feedback\nYour previous output was rejected. Address this feedback:\n${this.rejectionFeedback}`,
       );
-      this.rejectionFeedback = '';
     }
 
     return parts.join('\n');
@@ -1291,6 +1397,26 @@ export class QueenOrchestrator extends EventEmitter<OrchestratorEvents> {
       if (listFiles) resolved.push(listFiles);
     }
     return resolved;
+  }
+
+  private resolveModelForSpec(spec: AgentSpec): string {
+    const KNOWN_PREFIXES = ['claude-', 'anthropic/'];
+    const looksValid = KNOWN_PREFIXES.some((p) => spec.model.startsWith(p));
+    if (looksValid) return spec.model;
+
+    const fallback = this.getDefaultAgentModel();
+    log.warn(TAG, `Agent "${spec.id}" has unrecognized model "${spec.model}", falling back to "${fallback}"`);
+    return fallback;
+  }
+
+  private getDefaultAgentModel(): string {
+    if (this.sessionConfig) {
+      const coderConfig = this.sessionConfig.agents['coder'];
+      if (coderConfig) return coderConfig.model;
+      const first = Object.values(this.sessionConfig.agents)[0];
+      if (first) return first.model;
+    }
+    return 'claude-sonnet-4-6';
   }
 
   private emitTimelineEvent(

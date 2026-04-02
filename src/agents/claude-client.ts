@@ -3,6 +3,9 @@ import { log } from '../util/logger.js';
 import type { ToolDefinition } from './tools.js';
 
 const TAG = 'ClaudeClient';
+const FIRST_RESPONSE_TIMEOUT_MS = 60_000;
+const MAX_CONTEXT_CHARS = 80_000;
+const PRESERVE_RECENT_MESSAGES = 4;
 
 export interface AgentMessageParams {
   model: string;
@@ -19,6 +22,52 @@ export class ClaudeClient {
   constructor(apiKey: string) {
     this.client = new Anthropic({ apiKey, timeout: 15 * 60 * 1000 });
     log.info(TAG, 'Claude client created');
+  }
+
+  private compressHistory(
+    messages: Anthropic.MessageParam[],
+    onChunk: (chunk: string) => void,
+  ): void {
+    const estimatedSize = JSON.stringify(messages).length;
+    if (estimatedSize <= MAX_CONTEXT_CHARS) return;
+
+    log.warn(TAG, `Context size ${estimatedSize} exceeds ${MAX_CONTEXT_CHARS}, compressing history`);
+    onChunk(`\n[status] Compressing conversation history (${Math.round(estimatedSize / 1000)}k chars > ${MAX_CONTEXT_CHARS / 1000}k limit)\n`);
+
+    const protectedTail = messages.length >= PRESERVE_RECENT_MESSAGES
+      ? messages.length - PRESERVE_RECENT_MESSAGES
+      : messages.length;
+
+    for (let i = 1; i < protectedTail; i++) {
+      const msg = messages[i];
+      if (msg.role === 'user' && Array.isArray(msg.content)) {
+        const blocks = msg.content as Anthropic.ToolResultBlockParam[];
+        for (let b = 0; b < blocks.length; b++) {
+          const block = blocks[b];
+          if (block.type === 'tool_result' && typeof block.content === 'string' && block.content.length > 200) {
+            const originalLen = block.content.length;
+            blocks[b] = {
+              ...block,
+              content: `[previous tool result: ${originalLen} chars — compressed to save context]`,
+            };
+          }
+        }
+      } else if (msg.role === 'assistant' && Array.isArray(msg.content)) {
+        const blocks = msg.content as Anthropic.ContentBlock[];
+        for (let b = 0; b < blocks.length; b++) {
+          const block = blocks[b];
+          if (block.type === 'text' && block.text.length > 300) {
+            (blocks[b] as Anthropic.TextBlock) = {
+              ...block,
+              text: block.text.slice(0, 200) + '...[compressed]',
+            };
+          }
+        }
+      }
+    }
+
+    const newSize = JSON.stringify(messages).length;
+    log.info(TAG, `Compressed context: ${estimatedSize} -> ${newSize} chars`);
   }
 
   async createAgentMessage(params: AgentMessageParams): Promise<string> {
@@ -41,7 +90,9 @@ export class ClaudeClient {
 
     let fullText = '';
     let turnCount = 0;
+    let retryCount = 0;
     const maxTurns = 50;
+    const maxRetries = 5;
 
     for (;;) {
       turnCount++;
@@ -50,9 +101,21 @@ export class ClaudeClient {
         break;
       }
 
+      this.compressHistory(internalMessages, params.onChunk);
+
       log.debug(TAG, `Turn ${turnCount}: sending request (${internalMessages.length} messages)`);
 
       let response: Anthropic.Message;
+      let firstResponseTimer: ReturnType<typeof setTimeout> | null = null;
+      let gotFirstEvent = false;
+      const cancelDeadline = () => {
+        gotFirstEvent = true;
+        if (firstResponseTimer) {
+          clearTimeout(firstResponseTimer);
+          firstResponseTimer = null;
+        }
+      };
+
       try {
         const stream = this.client.messages.stream({
           model: params.model,
@@ -62,25 +125,56 @@ export class ClaudeClient {
           max_tokens: 8192,
         });
 
+        const responseDeadline = new Promise<never>((_, reject) => {
+          firstResponseTimer = setTimeout(() => {
+            if (!gotFirstEvent) {
+              const hint = turnCount === 1
+                ? `Check model name "${params.model}" and API key validity.`
+                : `The API may be slow or the request is too large.`;
+              reject(new Error(
+                `No response from Claude API within ${FIRST_RESPONSE_TIMEOUT_MS / 1000}s (turn ${turnCount}). ${hint}`,
+              ));
+              stream.abort();
+            }
+          }, FIRST_RESPONSE_TIMEOUT_MS);
+        });
+
         stream.on('text', (text) => {
+          cancelDeadline();
           fullText += text;
           params.onChunk(text);
         });
 
-        response = await stream.finalMessage();
+        stream.on('inputJson', () => cancelDeadline());
+        stream.on('message', () => cancelDeadline());
+        stream.on('contentBlock', (block) => {
+          cancelDeadline();
+          if (block.type === 'tool_use') {
+            params.onChunk(`[calling tool: ${block.name}]\n`);
+          }
+        });
+
+        const finalMessagePromise = stream.finalMessage();
+        finalMessagePromise.catch(() => {});
+        responseDeadline.catch(() => {});
+
+        response = await Promise.race([finalMessagePromise, responseDeadline]);
+        cancelDeadline();
+
         log.debug(TAG, `Turn ${turnCount} complete: stop_reason=${response.stop_reason}, usage=${JSON.stringify(response.usage)}`);
       } catch (err) {
+        cancelDeadline();
         if (err instanceof Anthropic.APIError) {
           log.error(TAG, `API error: status=${err.status} type=${err.error?.type ?? 'unknown'}`, err);
-          if (err.status === 429) {
-            log.warn(TAG, 'Rate limited, waiting 10s before retry');
-            await new Promise((r) => setTimeout(r, 10_000));
-            turnCount--;
-            continue;
-          }
-          if (err.status === 529) {
-            log.warn(TAG, 'API overloaded, waiting 30s before retry');
-            await new Promise((r) => setTimeout(r, 30_000));
+          if (err.status === 429 || err.status === 529) {
+            retryCount++;
+            if (retryCount > maxRetries) {
+              log.error(TAG, `Exceeded ${maxRetries} retries for ${err.status} errors, giving up`);
+              throw err;
+            }
+            const waitMs = err.status === 429 ? 10_000 : 30_000;
+            log.warn(TAG, `${err.status === 429 ? 'Rate limited' : 'API overloaded'}, waiting ${waitMs / 1000}s (retry ${retryCount}/${maxRetries})`);
+            await new Promise((r) => setTimeout(r, waitMs));
             turnCount--;
             continue;
           }
@@ -89,8 +183,13 @@ export class ClaudeClient {
         throw err;
       }
 
+      if (response.stop_reason === 'max_tokens') {
+        log.warn(TAG, `Agent hit max_tokens limit on turn ${turnCount} — output may be truncated`);
+        params.onChunk(`\n[warning] Output truncated (hit max_tokens limit). Response may be incomplete.\n`);
+      }
+
       if (response.stop_reason !== 'tool_use') {
-        log.info(TAG, `Agent finished after ${turnCount} turns (${fullText.length} chars total)`);
+        log.info(TAG, `Agent finished after ${turnCount} turns (${fullText.length} chars total, stop_reason=${response.stop_reason})`);
         return fullText;
       }
 

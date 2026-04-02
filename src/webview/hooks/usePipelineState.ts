@@ -45,6 +45,10 @@ export function usePipelineState(): void {
             addAgentOutput(msg.payload.agent, msg.payload.chunk);
             break;
 
+          case 'clearAgentOutputs':
+            usePipelineStore.setState({ agentOutputs: {} });
+            break;
+
           case 'timelineEvent':
             addTimelineEvent(msg.payload);
             break;
