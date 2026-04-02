@@ -13,13 +13,34 @@ interface AgentColors {
   legs: string;
 }
 
-const AGENT_COLORS: Record<AgentName, AgentColors> = {
+const AGENT_COLORS: Record<string, AgentColors> = {
   planner: { hair: '#1565c0', body: '#42a5f5', legs: '#0d47a1' },
   coder: { hair: '#2e7d32', body: '#66bb6a', legs: '#1b5e20' },
   tester: { hair: '#6a1b9a', body: '#ab47bc', legs: '#4a148c' },
   reviewer: { hair: '#e65100', body: '#ffa726', legs: '#bf360c' },
   orchestrator: { hair: '#ffd700', body: '#ffd54f', legs: '#f57f17' },
 };
+
+const DYNAMIC_PALETTES: AgentColors[] = [
+  { hair: '#00695c', body: '#4db6ac', legs: '#004d40' },
+  { hair: '#c62828', body: '#ef5350', legs: '#b71c1c' },
+  { hair: '#283593', body: '#5c6bc0', legs: '#1a237e' },
+  { hair: '#4e342e', body: '#8d6e63', legs: '#3e2723' },
+  { hair: '#00838f', body: '#4dd0e1', legs: '#006064' },
+  { hair: '#ad1457', body: '#ec407a', legs: '#880e4f' },
+];
+
+function hashCode(s: string): number {
+  let h = 0;
+  for (let i = 0; i < s.length; i++) {
+    h = ((h << 5) - h + s.charCodeAt(i)) | 0;
+  }
+  return Math.abs(h);
+}
+
+function getAgentColors(agent: AgentName): AgentColors {
+  return AGENT_COLORS[agent] ?? DYNAMIC_PALETTES[hashCode(agent) % DYNAMIC_PALETTES.length];
+}
 
 function buildSprite(colors: AgentColors, isOrchestrator: boolean): PixelGrid {
   const { hair: H, body: B, legs: L } = colors;
@@ -90,7 +111,7 @@ interface AgentSpriteProps {
 }
 
 export function AgentSprite({ agent, status, pixelSize = 3 }: AgentSpriteProps) {
-  const colors = AGENT_COLORS[agent];
+  const colors = getAgentColors(agent);
   const isOrchestrator = agent === 'orchestrator';
 
   const boxShadow = useMemo(

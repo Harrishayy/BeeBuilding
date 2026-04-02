@@ -20,6 +20,7 @@ export function usePipelineState(): void {
   const stopTransitionLoading = usePipelineStore((s) => s.stopTransitionLoading);
   const setWorkflows = usePipelineStore((s) => s.setWorkflows);
   const resetForNewWorkflow = usePipelineStore((s) => s.resetForNewWorkflow);
+  const clearPlanningMessages = usePipelineStore((s) => s.clearPlanningMessages);
 
   useEffect(() => {
     function handleMessage(event: MessageEvent) {
@@ -78,7 +79,7 @@ export function usePipelineState(): void {
 
           case 'planningMessage': {
             addPlanningMessage(msg.payload);
-            if (msg.payload.role === 'assistant') stopTransitionLoading();
+            stopTransitionLoading();
 
             if (msg.payload.role === 'assistant') {
               try {
@@ -113,8 +114,11 @@ export function usePipelineState(): void {
           case 'planningStatus':
             setPlanningStatus(msg.payload.phase);
             if (msg.payload.phase === 'chatting') {
-              stopTransitionLoading();
-              setPhase('planning');
+              const phase = usePipelineStore.getState().currentPhase;
+              if (phase !== 'planning') {
+                clearPlanningMessages();
+                setPhase('planning');
+              }
             }
             break;
 
@@ -153,5 +157,5 @@ export function usePipelineState(): void {
     vscode.postMessage({ type: 'requestWorkflows' });
 
     return () => window.removeEventListener('message', handleMessage);
-  }, [vscode, updateSnapshot, addTimelineEvent, addAgentOutput, addPlanningMessage, setPlanningStatus, setPlan, setArchitecture, setSettings, setPhase, setGithubIssues, setPendingQuestions, addToast, stopTransitionLoading, setWorkflows, resetForNewWorkflow]);
+  }, [vscode, updateSnapshot, addTimelineEvent, addAgentOutput, addPlanningMessage, setPlanningStatus, setPlan, setArchitecture, setSettings, setPhase, setGithubIssues, setPendingQuestions, addToast, stopTransitionLoading, setWorkflows, resetForNewWorkflow, clearPlanningMessages]);
 }

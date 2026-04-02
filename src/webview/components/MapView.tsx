@@ -1,9 +1,10 @@
+import { useMemo } from 'react';
 import { AgentStation } from './AgentStation';
 import { ConveyorBelt } from './ConveyorBelt';
 import { usePipelineStore } from '../state/pipelineStore';
 import type { AgentName, PipelineStage } from '../../shared/types';
 
-const PIPELINE_ORDER: AgentName[] = [
+const STATIC_PIPELINE_ORDER: AgentName[] = [
   'planner',
   'coder',
   'tester',
@@ -23,18 +24,50 @@ const STAGE_ACTIVE_AGENT: Partial<Record<PipelineStage, AgentName>> = {
   merging: 'orchestrator',
 };
 
-function isBeltActive(stage: PipelineStage, fromIdx: number): boolean {
+function isBeltActiveStatic(stage: PipelineStage, fromIdx: number): boolean {
   const activeAgent = STAGE_ACTIVE_AGENT[stage];
   if (!activeAgent) return false;
-  const activeIdx = PIPELINE_ORDER.indexOf(activeAgent);
+  const activeIdx = STATIC_PIPELINE_ORDER.indexOf(activeAgent);
   return fromIdx < activeIdx;
 }
 
 export function MapView() {
   const snapshot = usePipelineStore((s) => s.snapshot);
+  const architecture = usePipelineStore((s) => s.architecture);
 
+  const isDynamic = snapshot?.dynamicMode ?? false;
   const currentStage = snapshot?.stage ?? 'idle';
   const taskName = snapshot?.task?.title ?? 'No active task';
+
+  const agentOrder = useMemo<AgentName[]>(() => {
+    if (!isDynamic) return STATIC_PIPELINE_ORDER;
+    if (!snapshot?.agents) return [];
+    if (architecture?.executionOrder) {
+      const flat = architecture.executionOrder.flat();
+      const inSnapshot = new Set(Object.keys(snapshot.agents));
+      const ordered = flat.filter((id) => inSnapshot.has(id));
+      for (const id of inSnapshot) {
+        if (!ordered.includes(id)) ordered.push(id);
+      }
+      return ordered;
+    }
+    return Object.keys(snapshot.agents);
+  }, [isDynamic, snapshot?.agents, architecture?.executionOrder]);
+
+  const groupBoundaries = useMemo<Set<number>>(() => {
+    if (!isDynamic || !architecture?.executionOrder) return new Set();
+    const boundaries = new Set<number>();
+    let idx = 0;
+    for (const group of architecture.executionOrder) {
+      idx += group.length;
+      boundaries.add(idx - 1);
+    }
+    return boundaries;
+  }, [isDynamic, architecture?.executionOrder]);
+
+  const statusLabel = isDynamic
+    ? `GROUP ${(snapshot?.currentGroupIndex ?? 0) + 1}/${snapshot?.totalGroups ?? '?'}`
+    : currentStage.toUpperCase();
 
   return (
     <div
@@ -94,10 +127,18 @@ export function MapView() {
           }}
         />
 
-        {PIPELINE_ORDER.map((agent, index) => {
+        {agentOrder.map((agent, index) => {
           const agentState = snapshot?.agents[agent];
-          const activeAgent = STAGE_ACTIVE_AGENT[currentStage];
-          const isActive = agent === activeAgent;
+          const isActive = isDynamic
+            ? agentState?.status === 'working'
+            : agent === STAGE_ACTIVE_AGENT[currentStage];
+
+          const showBelt = index < agentOrder.length - 1 && !groupBoundaries.has(index);
+          const showGroupDivider = groupBoundaries.has(index) && index < agentOrder.length - 1;
+
+          const beltActive = isDynamic
+            ? (agentState?.status === 'done')
+            : isBeltActiveStatic(currentStage, index);
 
           return (
             <div
@@ -108,7 +149,6 @@ export function MapView() {
                 alignItems: 'center',
               }}
             >
-              {/* Zig-zag offset for isometric feel */}
               <div
                 style={{
                   transform:
@@ -127,11 +167,22 @@ export function MapView() {
                 />
               </div>
 
-              {index < PIPELINE_ORDER.length - 1 && (
+              {showBelt && (
                 <ConveyorBelt
-                  active={isBeltActive(currentStage, index)}
+                  active={beltActive}
                   direction="down"
                   length={32}
+                />
+              )}
+
+              {showGroupDivider && (
+                <div
+                  style={{
+                    width: 80,
+                    height: 2,
+                    background: '#ffd54f33',
+                    margin: '8px 0',
+                  }}
                 />
               )}
             </div>
@@ -154,7 +205,7 @@ export function MapView() {
         <span className="pixel-text" style={{ fontSize: 9, color: '#888' }}>
           STAGE:{' '}
           <span style={{ color: '#4fc3f7' }}>
-            {currentStage.toUpperCase()}
+            {statusLabel}
           </span>
         </span>
         <span

@@ -70,6 +70,8 @@ function createDefaultAgentState(name: AgentName): AgentState {
   };
 }
 
+const THROTTLE_MS = 500;
+
 export class PipelineFSM extends EventEmitter<FSMEvents> {
   private stage: PipelineStage = 'idle';
   private task: TaskDefinition | null = null;
@@ -83,6 +85,8 @@ export class PipelineFSM extends EventEmitter<FSMEvents> {
   private _dynamicMode = false;
   private _currentGroupIndex = 0;
   private _totalGroups = 0;
+  private _throttleTimer: ReturnType<typeof setTimeout> | null = null;
+  private _throttlePending = false;
 
   constructor() {
     super();
@@ -259,6 +263,34 @@ export class PipelineFSM extends EventEmitter<FSMEvents> {
     if (update.outputChunks !== undefined) current.outputChunks = update.outputChunks;
     if (update.artifacts !== undefined) current.artifacts = update.artifacts;
     if (update.progress !== undefined) current.progress = update.progress;
+
+    const isImmediate = update.status !== undefined || update.currentTask !== undefined;
+    if (isImmediate) {
+      this.emitStateChangeNow();
+    } else {
+      this.emitStateChangeThrottled();
+    }
+  }
+
+  private emitStateChangeNow(): void {
+    if (this._throttleTimer) {
+      clearTimeout(this._throttleTimer);
+      this._throttleTimer = null;
+    }
+    this._throttlePending = false;
+    this.emit('stateChange', this.getSnapshot());
+  }
+
+  private emitStateChangeThrottled(): void {
+    this._throttlePending = true;
+    if (this._throttleTimer) return;
+    this._throttleTimer = setTimeout(() => {
+      this._throttleTimer = null;
+      if (this._throttlePending) {
+        this._throttlePending = false;
+        this.emit('stateChange', this.getSnapshot());
+      }
+    }, THROTTLE_MS);
   }
 
   setGatePending(info: GatePendingInfo): void {

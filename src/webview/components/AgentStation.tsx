@@ -10,13 +10,17 @@ interface AgentStationProps {
   isActive: boolean;
 }
 
-const AGENT_LABELS: Record<AgentName, string> = {
+const AGENT_LABELS: Record<string, string> = {
   planner: 'PLAN',
   coder: 'CODE',
   tester: 'TEST',
   reviewer: 'REVIEW',
   orchestrator: 'MERGE',
 };
+
+function getLabel(agent: AgentName): string {
+  return AGENT_LABELS[agent] ?? agent.toUpperCase().slice(0, 8);
+}
 
 export function AgentStation({
   agent,
@@ -105,7 +109,7 @@ export function AgentStation({
               textAlign: 'center',
             }}
           >
-            {AGENT_LABELS[agent]}
+            {getLabel(agent)}
           </div>
 
           <StatusBadge status={status} />

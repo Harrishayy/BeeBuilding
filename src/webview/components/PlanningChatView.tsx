@@ -12,7 +12,6 @@ export function PlanningChatView() {
   const currentQuestionIndex = usePipelineStore((s) => s.currentQuestionIndex);
   const answerQuestion = usePipelineStore((s) => s.answerQuestion);
   const clearQuestions = usePipelineStore((s) => s.clearQuestions);
-  const startTransitionLoading = usePipelineStore((s) => s.startTransitionLoading);
 
   const [input, setInput] = useState('');
   const messagesEndRef = useRef<HTMLDivElement>(null);
@@ -40,9 +39,8 @@ export function PlanningChatView() {
       .join('\n\n');
 
     clearQuestions();
-    startTransitionLoading();
     vscode.postMessage({ type: 'sendPlanningReply', payload: { message: combined } });
-  }, [allAnswered, pendingQuestions, questionAnswers, clearQuestions, vscode, startTransitionLoading]);
+  }, [allAnswered, pendingQuestions, questionAnswers, clearQuestions, vscode]);
 
   const handleSend = () => {
     if (!input.trim()) return;
@@ -54,7 +52,6 @@ export function PlanningChatView() {
     }
 
     if (planningStatus === 'generating_plan') return;
-    startTransitionLoading();
     vscode.postMessage({ type: 'sendPlanningReply', payload: { message: input.trim() } });
     setInput('');
   };

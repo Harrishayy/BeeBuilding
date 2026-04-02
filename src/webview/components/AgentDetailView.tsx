@@ -5,7 +5,7 @@ import { useAgentEvents } from '../hooks/useAgentEvents';
 import { useVSCode } from '../hooks/useVSCode';
 import type { AgentName, ArtifactRef } from '../../shared/types';
 
-const AGENT_DISPLAY: Record<AgentName, string> = {
+const STATIC_AGENT_DISPLAY: Record<string, string> = {
   planner: 'PLANNER',
   coder: 'CODER',
   tester: 'TESTER',
@@ -13,13 +13,17 @@ const AGENT_DISPLAY: Record<AgentName, string> = {
   orchestrator: 'ORCHESTRATOR',
 };
 
-const FLOW: Record<AgentName, { from: AgentName | null; to: AgentName | null }> = {
+const STATIC_FLOW: Record<string, { from: AgentName | null; to: AgentName | null }> = {
   planner: { from: null, to: 'coder' },
   coder: { from: 'planner', to: 'tester' },
   tester: { from: 'coder', to: 'reviewer' },
   reviewer: { from: 'tester', to: 'orchestrator' },
   orchestrator: { from: 'reviewer', to: null },
 };
+
+function getDisplayName(agentId: AgentName, agentName?: string): string {
+  return STATIC_AGENT_DISPLAY[agentId] ?? agentName?.toUpperCase() ?? agentId.toUpperCase();
+}
 
 const ARTIFACT_ICON: Record<string, string> = {
   spec: '[S]',
@@ -98,9 +102,10 @@ export function AgentDetailView() {
     );
   }
 
-  const flow = FLOW[selectedAgent];
+  const isDynamic = snapshot?.dynamicMode ?? false;
+  const flow = isDynamic ? { from: null, to: null } : (STATIC_FLOW[selectedAgent] ?? { from: null, to: null });
   const gate = snapshot?.currentGate;
-  const isAtGate = gate != null && gate.fromAgent === selectedAgent;
+  const isAtGate = gate != null && (gate.fromAgent === selectedAgent || gate.fromAgent?.includes(selectedAgent));
 
   const handleBack = () => setView('map');
 
@@ -149,7 +154,7 @@ export function AgentDetailView() {
           {'<'} BACK
         </button>
         <span className="pixel-text" style={{ fontSize: 12, flex: 1 }}>
-          {AGENT_DISPLAY[selectedAgent]}
+          {getDisplayName(selectedAgent, agentState.name)}
         </span>
         <StatusBadge status={agentState.status} size={10} />
       </div>
@@ -182,7 +187,7 @@ export function AgentDetailView() {
                 className="pixel-text"
                 style={{ fontSize: 10, color: '#4fc3f7' }}
               >
-                {AGENT_DISPLAY[flow.from]}
+                {getDisplayName(flow.from)}
               </div>
             </div>
           )}
@@ -201,7 +206,7 @@ export function AgentDetailView() {
                 className="pixel-text"
                 style={{ fontSize: 10, color: '#ffa726' }}
               >
-                {AGENT_DISPLAY[flow.to]}
+                {getDisplayName(flow.to)}
               </div>
             </div>
           )}

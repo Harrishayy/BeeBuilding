@@ -76,6 +76,8 @@ interface PipelineStore {
   answerQuestion: (answer: string) => void;
   clearQuestions: () => void;
 
+  clearPlanningMessages: () => void;
+
   navigateToPhase: (phase: AppPhase) => void;
 
   addToast: (message: string, type: ToastData['type'], duration?: number) => void;
@@ -200,6 +202,9 @@ export const usePipelineStore = create<PipelineStore>((set) => ({
   clearQuestions: () =>
     set({ pendingQuestions: [], questionAnswers: [], currentQuestionIndex: 0 }),
 
+  clearPlanningMessages: () =>
+    set({ planningMessages: [], pendingQuestions: [], questionAnswers: [], currentQuestionIndex: 0 }),
+
   navigateToPhase: (phase) =>
     set((state) => {
       let targetPhase: AppPhase = phase;
@@ -234,7 +239,7 @@ export const usePipelineStore = create<PipelineStore>((set) => ({
           s.stopTransitionLoading();
           s.addToast('Operation timed out — please try again', 'warning', 5000);
         }
-      }, 30_000);
+      }, 60_000);
       return { isTransitionLoading: true, _transitionLoadingTimeout: timeout };
     }),
 
