@@ -17,6 +17,7 @@ export function usePipelineState(): void {
   const setGithubIssues = usePipelineStore((s) => s.setGithubIssues);
   const setPendingQuestions = usePipelineStore((s) => s.setPendingQuestions);
   const addToast = usePipelineStore((s) => s.addToast);
+  const stopTransitionLoading = usePipelineStore((s) => s.stopTransitionLoading);
 
   useEffect(() => {
     function handleMessage(event: MessageEvent) {
@@ -27,6 +28,7 @@ export function usePipelineState(): void {
         switch (msg.type) {
           case 'pipelineState':
             updateSnapshot(msg.payload);
+            if (msg.payload.stage !== 'idle') stopTransitionLoading();
             break;
 
           case 'agentOutput':
@@ -50,6 +52,7 @@ export function usePipelineState(): void {
           }
 
           case 'error': {
+            stopTransitionLoading();
             addToast(msg.payload.message, 'error', 6000);
             const snap = usePipelineStore.getState().snapshot;
             if (snap) updateSnapshot({ ...snap, error: msg.payload.message });
@@ -66,6 +69,7 @@ export function usePipelineState(): void {
 
           case 'planningMessage': {
             addPlanningMessage(msg.payload);
+            if (msg.payload.role === 'assistant') stopTransitionLoading();
 
             if (msg.payload.role === 'assistant') {
               try {
@@ -84,12 +88,14 @@ export function usePipelineState(): void {
           }
 
           case 'planReady':
+            stopTransitionLoading();
             setPlan(msg.payload);
             setPhase('plan_review');
             addToast('Plan generated! Review and approve.', 'success');
             break;
 
           case 'architectureReady':
+            stopTransitionLoading();
             setArchitecture(msg.payload);
             setPhase('architecture');
             addToast('Architecture determined! Review the agent setup.', 'success');
@@ -98,6 +104,7 @@ export function usePipelineState(): void {
           case 'planningStatus':
             setPlanningStatus(msg.payload.phase);
             if (msg.payload.phase === 'chatting') {
+              stopTransitionLoading();
               setPhase('planning');
             }
             break;
@@ -105,6 +112,17 @@ export function usePipelineState(): void {
           case 'issuesList':
             setGithubIssues(msg.payload);
             break;
+
+          case 'sessionRestore': {
+            const { phase, planningMessages, plan, architecture } = msg.payload;
+            setPhase(phase);
+            for (const m of planningMessages) {
+              addPlanningMessage(m);
+            }
+            if (plan) setPlan(plan);
+            if (architecture) setArchitecture(architecture);
+            break;
+          }
 
           default:
             break;
@@ -119,5 +137,5 @@ export function usePipelineState(): void {
     vscode.postMessage({ type: 'requestSettings' });
 
     return () => window.removeEventListener('message', handleMessage);
-  }, [vscode, updateSnapshot, addTimelineEvent, addAgentOutput, addPlanningMessage, setPlanningStatus, setPlan, setArchitecture, setSettings, setPhase, setGithubIssues, setPendingQuestions, addToast]);
+  }, [vscode, updateSnapshot, addTimelineEvent, addAgentOutput, addPlanningMessage, setPlanningStatus, setPlan, setArchitecture, setSettings, setPhase, setGithubIssues, setPendingQuestions, addToast, stopTransitionLoading]);
 }

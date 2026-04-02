@@ -107,3 +107,57 @@
 .anim-bob { animation: bob 2s ease-in-out infinite; }
 .anim-flash { animation: flash 0.8s ease-in-out infinite; }
 .anim-slide-in { animation: slideIn 0.3s ease-out forwards; }
+
+/* Bee loading screen flight animation */
+@keyframes beeFly {
+  0% {
+    left: -60px;
+    top: 38%;
+    transform: translateY(0);
+  }
+  10% {
+    top: 34%;
+    transform: translateY(-12px);
+  }
+  20% {
+    top: 40%;
+    transform: translateY(8px);
+  }
+  30% {
+    top: 32%;
+    transform: translateY(-16px);
+  }
+  40% {
+    top: 42%;
+    transform: translateY(10px);
+  }
+  50% {
+    top: 35%;
+    transform: translateY(-8px);
+  }
+  60% {
+    top: 44%;
+    transform: translateY(14px);
+  }
+  70% {
+    top: 33%;
+    transform: translateY(-14px);
+  }
+  80% {
+    top: 40%;
+    transform: translateY(6px);
+  }
+  90% {
+    top: 36%;
+    transform: translateY(-10px);
+  }
+  100% {
+    left: calc(100% + 60px);
+    top: 38%;
+    transform: translateY(0);
+  }
+}
+
+.bee-fly-animation {
+  animation: beeFly 4s linear infinite;
+}

@@ -1,6 +1,7 @@
 import type {
   AgentName,
   AgentArchitecture,
+  AppPhase,
   PipelineSnapshot,
   PipelineStage,
   PlanDocument,
@@ -39,13 +40,30 @@ export type ExtensionMessage =
   | { type: 'timelineEvent'; payload: TimelineEvent }
   | { type: 'error'; payload: { message: string; recoverable: boolean } }
   | { type: 'sessionLoaded'; payload: { sessionId: string } }
-  | { type: 'settingsState'; payload: { hasApiKey: boolean; hasGitHubPAT: boolean } }
+  | {
+      type: 'settingsState';
+      payload: {
+        hasApiKey: boolean;
+        hasGitHubPAT: boolean;
+        skillsPaths: string[];
+        agentFrameworkPath: string;
+      };
+    }
   | { type: 'planningMessage'; payload: PlanningMessage }
   | { type: 'planReady'; payload: PlanDocument }
   | { type: 'architectureReady'; payload: AgentArchitecture }
   | { type: 'planningStatus'; payload: { phase: PlanningStatus } }
   | { type: 'issuesList'; payload: GitHubIssuePayload[] }
-  | { type: 'issueImported'; payload: { title: string; body: string; labels: string[] } };
+  | { type: 'issueImported'; payload: { title: string; body: string; labels: string[] } }
+  | {
+      type: 'sessionRestore';
+      payload: {
+        phase: AppPhase;
+        planningMessages: PlanningMessage[];
+        plan: PlanDocument | null;
+        architecture: AgentArchitecture | null;
+      };
+    };
 
 // Webview -> Extension Host
 export type WebviewMessage =
@@ -67,6 +85,10 @@ export type WebviewMessage =
   | { type: 'removeApiKey' }
   | { type: 'saveGitHubPAT'; payload: { token: string } }
   | { type: 'requestSettings' }
+  | { type: 'addSkillsPath'; payload: { path: string } }
+  | { type: 'removeSkillsPath'; payload: { path: string } }
+  | { type: 'saveAgentFrameworkPath'; payload: { path: string } }
+  | { type: 'clearAgentFrameworkPath' }
   | { type: 'startPlanning'; payload: { description: string; context?: string } }
   | { type: 'sendPlanningReply'; payload: { message: string } }
   | { type: 'approvePlan' }

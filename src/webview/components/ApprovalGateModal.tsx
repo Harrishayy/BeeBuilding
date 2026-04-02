@@ -90,7 +90,7 @@ export function ApprovalGateModal() {
         {/* Title */}
         <div
           className="pixel-text"
-          style={{ fontSize: 9, color: '#ffd54f', textAlign: 'center' }}
+          style={{ fontSize: 12, color: '#ffd54f', textAlign: 'center' }}
         >
           GATE CHECK
         </div>
@@ -108,11 +108,11 @@ export function ApprovalGateModal() {
           <div
             className="pixel-text"
             style={{
-              fontSize: 7,
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              gap: 8,
+            fontSize: 10,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            gap: 8,
             }}
           >
             <span style={{ color: '#4fc3f7' }}>
@@ -125,7 +125,7 @@ export function ApprovalGateModal() {
           </div>
           <div
             className="pixel-text"
-            style={{ fontSize: 6, color: '#888' }}
+            style={{ fontSize: 9, color: '#888' }}
           >
             {STAGE_LABEL[gate.stage]}
           </div>
@@ -144,13 +144,13 @@ export function ApprovalGateModal() {
           <div style={{ textAlign: 'center' }}>
             <div
               className="pixel-text"
-              style={{ fontSize: 10, color: '#fff' }}
+              style={{ fontSize: 14, color: '#fff' }}
             >
               {gate.filesChanged}
             </div>
             <div
               className="pixel-text"
-              style={{ fontSize: 5, color: '#888' }}
+              style={{ fontSize: 8, color: '#888' }}
             >
               FILES
             </div>
@@ -158,13 +158,13 @@ export function ApprovalGateModal() {
           <div style={{ textAlign: 'center' }}>
             <div
               className="pixel-text"
-              style={{ fontSize: 10, color: '#66bb6a' }}
+              style={{ fontSize: 14, color: '#66bb6a' }}
             >
               +{gate.linesAdded}
             </div>
             <div
               className="pixel-text"
-              style={{ fontSize: 5, color: '#888' }}
+              style={{ fontSize: 8, color: '#888' }}
             >
               ADDED
             </div>
@@ -172,13 +172,13 @@ export function ApprovalGateModal() {
           <div style={{ textAlign: 'center' }}>
             <div
               className="pixel-text"
-              style={{ fontSize: 10, color: '#ef5350' }}
+              style={{ fontSize: 14, color: '#ef5350' }}
             >
               -{gate.linesRemoved}
             </div>
             <div
               className="pixel-text"
-              style={{ fontSize: 5, color: '#888' }}
+              style={{ fontSize: 8, color: '#888' }}
             >
               REMOVED
             </div>
@@ -191,10 +191,10 @@ export function ApprovalGateModal() {
             <label
               className="pixel-text"
               style={{
-                fontSize: 6,
-                color: '#aaa',
-                display: 'block',
-                marginBottom: 4,
+              fontSize: 9,
+              color: '#aaa',
+              display: 'block',
+              marginBottom: 4,
               }}
             >
               FEEDBACK

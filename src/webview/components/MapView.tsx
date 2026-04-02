@@ -61,7 +61,7 @@ export function MapView() {
       >
         <span
           className="pixel-text"
-          style={{ fontSize: 8, color: '#ffd54f' }}
+          style={{ fontSize: 11, color: '#ffd54f' }}
         >
           {'[=]'} AGENT FACTORY
         </span>
@@ -151,7 +151,7 @@ export function MapView() {
           background: '#16213e',
         }}
       >
-        <span className="pixel-text" style={{ fontSize: 6, color: '#888' }}>
+        <span className="pixel-text" style={{ fontSize: 9, color: '#888' }}>
           STAGE:{' '}
           <span style={{ color: '#4fc3f7' }}>
             {currentStage.toUpperCase()}
@@ -160,7 +160,7 @@ export function MapView() {
         <span
           className="pixel-text"
           style={{
-            fontSize: 6,
+            fontSize: 9,
             color: '#888',
             maxWidth: 150,
             overflow: 'hidden',

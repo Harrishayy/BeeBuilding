@@ -43,20 +43,20 @@ function ArtifactItem({ artifact }: { artifact: ArtifactRef }) {
     >
       <span
         className="pixel-text"
-        style={{ fontSize: 7, color: '#4dd0e1', flexShrink: 0 }}
+        style={{ fontSize: 10, color: '#4dd0e1', flexShrink: 0 }}
       >
         {ARTIFACT_ICON[artifact.type] ?? '[?]'}
       </span>
       <div style={{ flex: 1, minWidth: 0 }}>
         <div
           className="pixel-text"
-          style={{ fontSize: 6, color: '#e0e0e0' }}
+          style={{ fontSize: 9, color: '#e0e0e0' }}
         >
           {artifact.name}
         </div>
         <div
           style={{
-            fontSize: 5,
+            fontSize: 8,
             color: '#888',
             overflow: 'hidden',
             textOverflow: 'ellipsis',
@@ -144,11 +144,11 @@ export function AgentDetailView() {
         <button
           className="pixel-btn"
           onClick={handleBack}
-          style={{ fontSize: 7, padding: '4px 8px' }}
+          style={{ fontSize: 10, padding: '4px 8px' }}
         >
           {'<'} BACK
         </button>
-        <span className="pixel-text" style={{ fontSize: 9, flex: 1 }}>
+        <span className="pixel-text" style={{ fontSize: 12, flex: 1 }}>
           {AGENT_DISPLAY[selectedAgent]}
         </span>
         <StatusBadge status={agentState.status} size={10} />
@@ -174,13 +174,13 @@ export function AgentDetailView() {
             >
               <div
                 className="pixel-text"
-                style={{ fontSize: 6, color: '#888', marginBottom: 4 }}
-              >
-                RECEIVED FROM
-              </div>
+              style={{ fontSize: 9, color: '#888', marginBottom: 4 }}
+            >
+              RECEIVED FROM
+            </div>
               <div
                 className="pixel-text"
-                style={{ fontSize: 7, color: '#4fc3f7' }}
+                style={{ fontSize: 10, color: '#4fc3f7' }}
               >
                 {AGENT_DISPLAY[flow.from]}
               </div>
@@ -193,13 +193,13 @@ export function AgentDetailView() {
             >
               <div
                 className="pixel-text"
-                style={{ fontSize: 6, color: '#888', marginBottom: 4 }}
-              >
-                PASSING TO
-              </div>
+              style={{ fontSize: 9, color: '#888', marginBottom: 4 }}
+            >
+              PASSING TO
+            </div>
               <div
                 className="pixel-text"
-                style={{ fontSize: 7, color: '#ffa726' }}
+                style={{ fontSize: 10, color: '#ffa726' }}
               >
                 {AGENT_DISPLAY[flow.to]}
               </div>
@@ -230,7 +230,7 @@ export function AgentDetailView() {
         <div style={{ flex: 1, minHeight: 150 }}>
           <div
             className="pixel-text"
-            style={{ fontSize: 7, color: '#888', marginBottom: 4 }}
+            style={{ fontSize: 10, color: '#888', marginBottom: 4 }}
           >
             OUTPUT LOG
           </div>
@@ -242,9 +242,9 @@ export function AgentDetailView() {
           <div>
             <div
               className="pixel-text"
-              style={{ fontSize: 7, color: '#888', marginBottom: 4 }}
-            >
-              ARTIFACTS
+            style={{ fontSize: 10, color: '#888', marginBottom: 4 }}
+          >
+            ARTIFACTS
             </div>
             <div
               style={{
@@ -274,13 +274,13 @@ export function AgentDetailView() {
           >
             <div
               className="pixel-text"
-              style={{ fontSize: 7, color: '#ffd54f' }}
+              style={{ fontSize: 10, color: '#ffd54f' }}
             >
               {'!!'} APPROVAL REQUIRED
             </div>
             <div
               className="pixel-text"
-              style={{ fontSize: 6, color: '#aaa' }}
+              style={{ fontSize: 9, color: '#aaa' }}
             >
               {gate.filesChanged} files | +{gate.linesAdded} -{gate.linesRemoved}
             </div>

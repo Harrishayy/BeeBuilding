@@ -26,7 +26,12 @@ interface PipelineStore {
   planningStatus: PlanningStatus | null;
   plan: PlanDocument | null;
   architecture: AgentArchitecture | null;
-  settings: { hasApiKey: boolean; hasGitHubPAT: boolean };
+  settings: {
+    hasApiKey: boolean;
+    hasGitHubPAT: boolean;
+    skillsPaths: string[];
+    agentFrameworkPath: string;
+  };
   githubIssues: GitHubIssuePayload[];
 
   pendingQuestions: string[];
@@ -36,6 +41,9 @@ interface PipelineStore {
   previousPhase: AppPhase | null;
 
   toasts: ToastData[];
+
+  isTransitionLoading: boolean;
+  _transitionLoadingTimeout: ReturnType<typeof setTimeout> | null;
 
   updateSnapshot: (snapshot: PipelineSnapshot) => void;
   addTimelineEvent: (event: TimelineEvent) => void;
@@ -49,7 +57,12 @@ interface PipelineStore {
   setPlanningStatus: (status: PlanningStatus | null) => void;
   setPlan: (plan: PlanDocument | null) => void;
   setArchitecture: (arch: AgentArchitecture | null) => void;
-  setSettings: (s: { hasApiKey: boolean; hasGitHubPAT: boolean }) => void;
+  setSettings: (s: {
+    hasApiKey: boolean;
+    hasGitHubPAT: boolean;
+    skillsPaths: string[];
+    agentFrameworkPath: string;
+  }) => void;
   setGithubIssues: (issues: GitHubIssuePayload[]) => void;
 
   setPendingQuestions: (questions: string[]) => void;
@@ -58,6 +71,9 @@ interface PipelineStore {
 
   addToast: (message: string, type: ToastData['type'], duration?: number) => void;
   removeToast: (id: string) => void;
+
+  startTransitionLoading: () => void;
+  stopTransitionLoading: () => void;
 }
 
 export const usePipelineStore = create<PipelineStore>((set) => ({
@@ -72,7 +88,7 @@ export const usePipelineStore = create<PipelineStore>((set) => ({
   planningStatus: null,
   plan: null,
   architecture: null,
-  settings: { hasApiKey: false, hasGitHubPAT: false },
+  settings: { hasApiKey: false, hasGitHubPAT: false, skillsPaths: [], agentFrameworkPath: '' },
   githubIssues: [],
 
   pendingQuestions: [],
@@ -82,6 +98,9 @@ export const usePipelineStore = create<PipelineStore>((set) => ({
   previousPhase: null,
 
   toasts: [],
+
+  isTransitionLoading: false,
+  _transitionLoadingTimeout: null,
 
   updateSnapshot: (snapshot) => set({ snapshot }),
 
@@ -100,7 +119,11 @@ export const usePipelineStore = create<PipelineStore>((set) => ({
 
   selectAgent: (agent) => set({ selectedAgent: agent }),
   setView: (view) => set({ currentView: view }),
-  setPhase: (phase) => set({ currentPhase: phase }),
+  setPhase: (phase) =>
+    set((state) => {
+      if (state._transitionLoadingTimeout) clearTimeout(state._transitionLoadingTimeout);
+      return { currentPhase: phase, isTransitionLoading: false, _transitionLoadingTimeout: null };
+    }),
 
   openSettings: () =>
     set((state) => ({
@@ -152,4 +175,23 @@ export const usePipelineStore = create<PipelineStore>((set) => ({
     set((state) => ({
       toasts: state.toasts.filter((t) => t.id !== id),
     })),
+
+  startTransitionLoading: () =>
+    set((state) => {
+      if (state._transitionLoadingTimeout) clearTimeout(state._transitionLoadingTimeout);
+      const timeout = setTimeout(() => {
+        const s = usePipelineStore.getState();
+        if (s.isTransitionLoading) {
+          s.stopTransitionLoading();
+          s.addToast('Operation timed out — please try again', 'warning', 5000);
+        }
+      }, 30_000);
+      return { isTransitionLoading: true, _transitionLoadingTimeout: timeout };
+    }),
+
+  stopTransitionLoading: () =>
+    set((state) => {
+      if (state._transitionLoadingTimeout) clearTimeout(state._transitionLoadingTimeout);
+      return { isTransitionLoading: false, _transitionLoadingTimeout: null };
+    }),
 }));

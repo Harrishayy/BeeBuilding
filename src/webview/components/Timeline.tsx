@@ -60,11 +60,11 @@ export function Timeline({ events }: TimelineProps) {
           flexShrink: 0,
         }}
       >
-        <span style={{ fontSize: 8, color: '#aaa' }}>
+        <span style={{ fontSize: 11, color: '#aaa' }}>
           {collapsed ? '\u25B6' : '\u25BC'}
         </span>
         {!collapsed && (
-          <span className="pixel-text" style={{ fontSize: 7 }}>
+          <span className="pixel-text" style={{ fontSize: 10 }}>
             TIMELINE
           </span>
         )}
@@ -84,7 +84,7 @@ export function Timeline({ events }: TimelineProps) {
               className="pixel-text"
               style={{
                 color: '#555',
-                fontSize: 6,
+                fontSize: 9,
                 padding: 8,
                 textAlign: 'center',
               }}
@@ -105,7 +105,7 @@ export function Timeline({ events }: TimelineProps) {
                 display: 'flex',
                 gap: 6,
                 alignItems: 'flex-start',
-                fontSize: 6,
+                fontSize: 9,
                 fontFamily: 'var(--font-pixel)',
               }}
             >
@@ -122,7 +122,7 @@ export function Timeline({ events }: TimelineProps) {
                 }}
               />
               <div style={{ flex: 1, minWidth: 0 }}>
-                <div style={{ color: '#666', fontSize: 5 }}>
+                <div style={{ color: '#666', fontSize: 8 }}>
                   {formatTime(evt.timestamp)}
                 </div>
                 <div

@@ -22,7 +22,7 @@ export function WorkLog({ chunks }: WorkLogProps) {
         background: '#0a0a14',
         padding: 8,
         fontFamily: 'var(--font-pixel)',
-        fontSize: 6,
+        fontSize: 9,
         lineHeight: 1.8,
         color: '#66bb6a',
         maxHeight: 300,

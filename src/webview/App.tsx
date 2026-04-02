@@ -10,6 +10,7 @@ import { PlanningChatView } from './components/PlanningChatView';
 import { PlanReviewView } from './components/PlanReviewView';
 import { ArchitectureView } from './components/ArchitectureView';
 import { ToastContainer } from './components/Toast';
+import { BeeLoadingScreen } from './components/BeeLoadingScreen';
 import { usePipelineState } from './hooks/usePipelineState';
 import { usePipelineStore } from './state/pipelineStore';
 
@@ -18,6 +19,7 @@ export function App() {
   const currentView = usePipelineStore((s) => s.currentView);
   const snapshot = usePipelineStore((s) => s.snapshot);
   const timelineEvents = usePipelineStore((s) => s.timelineEvents);
+  const isTransitionLoading = usePipelineStore((s) => s.isTransitionLoading);
 
   usePipelineState();
 
@@ -50,6 +52,7 @@ export function App() {
   return (
     <ErrorBoundary>
       <ToastContainer />
+      {isTransitionLoading && <BeeLoadingScreen />}
       <div
         style={{
           display: 'flex',

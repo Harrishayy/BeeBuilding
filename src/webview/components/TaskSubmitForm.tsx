@@ -41,13 +41,13 @@ export function TaskSubmitForm() {
     >
       <div
         className="pixel-text"
-        style={{ fontSize: 10, textAlign: 'center', marginBottom: 8, color: '#ffd54f' }}
+        style={{ fontSize: 14, textAlign: 'center', marginBottom: 8, color: '#ffd54f' }}
       >
         NEW MISSION
       </div>
 
       <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-        <label className="pixel-text" style={{ fontSize: 6, color: '#aaa' }}>
+        <label className="pixel-text" style={{ fontSize: 9, color: '#aaa' }}>
           TITLE
         </label>
         <input
@@ -61,7 +61,7 @@ export function TaskSubmitForm() {
       </div>
 
       <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-        <label className="pixel-text" style={{ fontSize: 6, color: '#aaa' }}>
+        <label className="pixel-text" style={{ fontSize: 9, color: '#aaa' }}>
           DESCRIPTION
         </label>
         <textarea
@@ -75,7 +75,7 @@ export function TaskSubmitForm() {
       </div>
 
       <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-        <label className="pixel-text" style={{ fontSize: 6, color: '#aaa' }}>
+        <label className="pixel-text" style={{ fontSize: 9, color: '#aaa' }}>
           PRIORITY
         </label>
         <select

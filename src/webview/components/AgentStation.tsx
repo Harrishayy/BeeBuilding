@@ -99,7 +99,7 @@ export function AgentStation({
           <div
             className="pixel-text"
             style={{
-              fontSize: 7,
+              fontSize: 10,
               letterSpacing: 1,
               color: isActive ? '#fff' : '#aaa',
               textAlign: 'center',
@@ -113,9 +113,9 @@ export function AgentStation({
           {currentTask && (
             <div
               style={{
-                fontSize: 6,
-                color: '#888',
-                maxWidth: 80,
+              fontSize: 9,
+              color: '#888',
+              maxWidth: 80,
                 overflow: 'hidden',
                 textOverflow: 'ellipsis',
                 whiteSpace: 'nowrap',

@@ -8,6 +8,7 @@ export function TaskCreationView() {
   const settings = usePipelineStore((s) => s.settings);
   const addToast = usePipelineStore((s) => s.addToast);
   const setPhase = usePipelineStore((s) => s.setPhase);
+  const startTransitionLoading = usePipelineStore((s) => s.startTransitionLoading);
   const [description, setDescription] = useState('');
   const [context, setContext] = useState('');
   const [tab, setTab] = useState<'manual' | 'github'>('manual');
@@ -22,6 +23,7 @@ export function TaskCreationView() {
       addToast('Enter a task description to start planning', 'warning');
       return;
     }
+    startTransitionLoading();
     vscode.postMessage({
       type: 'startPlanning',
       payload: { description: description.trim(), context: context.trim() || undefined },
@@ -49,7 +51,7 @@ export function TaskCreationView() {
     >
       <div
         className="pixel-text"
-        style={{ fontSize: 12, textAlign: 'center', color: '#ffd54f', marginBottom: 4 }}
+        style={{ fontSize: 16, textAlign: 'center', color: '#ffd54f', marginBottom: 4 }}
       >
         NEW MISSION
       </div>
@@ -69,8 +71,8 @@ export function TaskCreationView() {
           }}
           onClick={() => setPhase('settings')}
         >
-          <span style={{ fontSize: 12 }}>{'\u26A0'}</span>
-          <span className="pixel-text" style={{ fontSize: 6, color: '#ffd54f' }}>
+          <span style={{ fontSize: 16 }}>{'\u26A0'}</span>
+          <span className="pixel-text" style={{ fontSize: 9, color: '#ffd54f' }}>
             API key required — click here to configure in Settings
           </span>
         </div>
@@ -81,7 +83,7 @@ export function TaskCreationView() {
         <button
           className={`pixel-btn ${tab === 'manual' ? 'pixel-btn-primary' : ''}`}
           onClick={() => setTab('manual')}
-          style={{ flex: 1, fontSize: 7 }}
+          style={{ flex: 1, fontSize: 10 }}
         >
           MANUAL
         </button>
@@ -89,7 +91,7 @@ export function TaskCreationView() {
           <button
             className={`pixel-btn ${tab === 'github' ? 'pixel-btn-primary' : ''}`}
             onClick={() => setTab('github')}
-            style={{ flex: 1, fontSize: 7 }}
+            style={{ flex: 1, fontSize: 10 }}
           >
             GITHUB ISSUE
           </button>
@@ -99,7 +101,7 @@ export function TaskCreationView() {
       {tab === 'manual' ? (
         <>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-            <label className="pixel-text" style={{ fontSize: 6, color: '#aaa' }}>
+            <label className="pixel-text" style={{ fontSize: 9, color: '#aaa' }}>
               TASK DESCRIPTION
             </label>
             <textarea
@@ -113,7 +115,7 @@ export function TaskCreationView() {
           </div>
 
           <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-            <label className="pixel-text" style={{ fontSize: 6, color: '#aaa' }}>
+            <label className="pixel-text" style={{ fontSize: 9, color: '#aaa' }}>
               ADDITIONAL CONTEXT (OPTIONAL)
             </label>
             <textarea

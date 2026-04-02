@@ -8,23 +8,26 @@ const AGENT_COLORS = ['#4fc3f7', '#81c784', '#ffb74d', '#f06292', '#ba68c8', '#4
 export function ArchitectureView() {
   const vscode = useVSCode();
   const architecture = usePipelineStore((s) => s.architecture);
+  const startTransitionLoading = usePipelineStore((s) => s.startTransitionLoading);
   const [revising, setRevising] = useState(false);
   const [feedback, setFeedback] = useState('');
 
   if (!architecture) {
     return (
-      <div className="pixel-text" style={{ fontSize: 8, color: '#888', textAlign: 'center', padding: 32 }}>
+      <div className="pixel-text" style={{ fontSize: 11, color: '#888', textAlign: 'center', padding: 32 }}>
         DETERMINING ARCHITECTURE...
       </div>
     );
   }
 
   const handleApprove = () => {
+    startTransitionLoading();
     vscode.postMessage({ type: 'approveArchitecture' });
   };
 
   const handleRevise = () => {
     if (!feedback.trim()) return;
+    startTransitionLoading();
     vscode.postMessage({ type: 'reviseArchitecture', payload: { feedback: feedback.trim() } });
     setFeedback('');
     setRevising(false);
@@ -44,11 +47,11 @@ export function ArchitectureView() {
         height: '100%',
       }}
     >
-      <div className="pixel-text" style={{ fontSize: 12, textAlign: 'center', color: '#ffd54f' }}>
+      <div className="pixel-text" style={{ fontSize: 16, textAlign: 'center', color: '#ffd54f' }}>
         AGENT ARCHITECTURE
       </div>
 
-      <div className="pixel-text" style={{ fontSize: 6, textAlign: 'center', color: '#888' }}>
+      <div className="pixel-text" style={{ fontSize: 9, textAlign: 'center', color: '#888' }}>
         EST. TIME: {architecture.estimatedTime}
       </div>
 
@@ -56,7 +59,7 @@ export function ArchitectureView() {
       <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
         {architecture.executionOrder.map((group, groupIdx) => (
           <div key={groupIdx}>
-            <div className="pixel-text" style={{ fontSize: 6, color: '#888', marginBottom: 4 }}>
+            <div className="pixel-text" style={{ fontSize: 9, color: '#888', marginBottom: 4 }}>
               {group.length > 1 ? `PARALLEL GROUP ${groupIdx + 1}` : `STEP ${groupIdx + 1}`}
             </div>
             <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
@@ -68,8 +71,17 @@ export function ArchitectureView() {
               })}
             </div>
             {groupIdx < architecture.executionOrder.length - 1 && (
-              <div className="pixel-text" style={{ fontSize: 8, color: '#555', textAlign: 'center', padding: 4 }}>
-                {'\u25BC'}
+              <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', padding: '6px 0' }}>
+                <div style={{ width: 3, height: 18, background: '#ffd54f' }} />
+                <div
+                  style={{
+                    width: 0,
+                    height: 0,
+                    borderLeft: '8px solid transparent',
+                    borderRight: '8px solid transparent',
+                    borderTop: '10px solid #ffd54f',
+                  }}
+                />
               </div>
             )}
           </div>
@@ -121,11 +133,11 @@ function AgentCard({ agent, color }: { agent: AgentSpec; color: string }) {
     >
       <div style={{ display: 'flex', gap: 6, alignItems: 'center', marginBottom: 6 }}>
         <div style={{ width: 10, height: 10, background: color, borderRadius: 2 }} />
-        <span className="pixel-text" style={{ fontSize: 8, color }}>
+        <span className="pixel-text" style={{ fontSize: 11, color }}>
           {agent.name.toUpperCase()}
         </span>
       </div>
-      <div className="pixel-text" style={{ fontSize: 6, color: '#ccc', marginBottom: 6 }}>
+      <div className="pixel-text" style={{ fontSize: 9, color: '#ccc', marginBottom: 6 }}>
         {agent.role}
       </div>
       <div style={{ display: 'flex', gap: 3, flexWrap: 'wrap' }}>
@@ -133,7 +145,7 @@ function AgentCard({ agent, color }: { agent: AgentSpec; color: string }) {
           <span
             key={tool}
             className="pixel-text"
-            style={{ fontSize: 4, color: '#888', background: '#1a1a2e', padding: '1px 4px' }}
+            style={{ fontSize: 7, color: '#888', background: '#1a1a2e', padding: '1px 4px' }}
           >
             {tool}
           </span>

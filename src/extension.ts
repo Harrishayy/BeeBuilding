@@ -5,11 +5,12 @@ import { AgentOrchestrator } from './agents/orchestrator.js';
 import { PlanningEngine } from './agents/planning-engine.js';
 import { ArchitectureEngine } from './agents/architecture-engine.js';
 import { KeyStore } from './state/key-store.js';
+import { loadSession, patchSession, clearSession } from './state/workspace-session.js';
 import { GitHubClient } from './github/github-client.js';
 import { log } from './util/logger.js';
 import type { ExtensionMessage } from './shared/messages.js';
 import type { WebviewMessage } from './shared/messages.js';
-import type { PlanDocument, AgentArchitecture } from './shared/types.js';
+import type { AppPhase, PlanDocument, AgentArchitecture, PlanningMessage } from './shared/types.js';
 
 let orchestrator: AgentOrchestrator | undefined;
 let keyStore: KeyStore;
@@ -17,6 +18,8 @@ let planningEngine: PlanningEngine | undefined;
 let architectureEngine: ArchitectureEngine | undefined;
 let currentPlan: PlanDocument | undefined;
 let currentArchitecture: AgentArchitecture | undefined;
+let currentPhase: AppPhase = 'task';
+let planningMessages: PlanningMessage[] = [];
 
 type MessageSink = { postMessage(msg: ExtensionMessage): void };
 
@@ -34,6 +37,67 @@ let _sinks: (MessageSink | undefined)[] = [];
 
 function broadcastAll(msg: ExtensionMessage) {
   broadcast(msg, ..._sinks);
+}
+
+function getSkillsPaths(): string[] {
+  return vscode.workspace.getConfiguration('beebuilder').get<string[]>('skillsPaths') ?? [];
+}
+
+function getAgentFrameworkPath(): string {
+  return vscode.workspace.getConfiguration('beebuilder').get<string>('agentFrameworkPath') ?? '';
+}
+
+async function broadcastSettings(): Promise<void> {
+  broadcastAll({
+    type: 'settingsState',
+    payload: {
+      hasApiKey: await keyStore.hasApiKey(),
+      hasGitHubPAT: await keyStore.hasGitHubPAT(),
+      skillsPaths: getSkillsPaths(),
+      agentFrameworkPath: getAgentFrameworkPath(),
+    },
+  });
+}
+
+function persistState(): void {
+  patchSession({
+    phase: currentPhase,
+    planningMessages,
+    plan: currentPlan ?? null,
+    architecture: currentArchitecture ?? null,
+  });
+}
+
+function trackPhase(phase: AppPhase): void {
+  currentPhase = phase;
+  persistState();
+}
+
+function trackPlanningMessage(msg: PlanningMessage): void {
+  planningMessages.push(msg);
+  persistState();
+}
+
+function restoreSessionToWebview(): void {
+  const saved = loadSession();
+  if (!saved || saved.phase === 'task') return;
+
+  currentPhase = saved.phase;
+  planningMessages = saved.planningMessages;
+  currentPlan = saved.plan ?? undefined;
+  currentArchitecture = saved.architecture ?? undefined;
+
+  log.info('Extension', `Restoring session: phase=${saved.phase}, msgs=${saved.planningMessages.length}`);
+
+  broadcastAll({
+    type: 'sessionRestore',
+    payload: {
+      phase: saved.phase,
+      planningMessages: saved.planningMessages,
+      plan: saved.plan,
+      architecture: saved.architecture,
+    },
+  });
 }
 
 export function activate(context: vscode.ExtensionContext): void {
@@ -157,15 +221,18 @@ async function handleWebviewMessage(message: WebviewMessage): Promise<void> {
 
   try {
     switch (message.type) {
-      case 'submitTask':
-        orchestrator?.submitTask({
+      case 'submitTask': {
+        const task = {
           id: randomUUID(),
           title: message.payload.title,
           description: message.payload.description,
           priority: message.payload.priority as 'low' | 'medium' | 'high' | 'critical',
           createdAt: Date.now(),
-        });
+        };
+        patchSession({ task });
+        orchestrator?.submitTask(task);
         break;
+      }
 
       case 'approveGate':
         orchestrator?.approveCurrentGate();
@@ -194,41 +261,55 @@ async function handleWebviewMessage(message: WebviewMessage): Promise<void> {
         if (orchestrator) {
           broadcastAll({ type: 'pipelineState', payload: orchestrator.getSnapshot() });
         }
+        restoreSessionToWebview();
         break;
 
       // --- Settings ---
       case 'saveApiKey':
         await keyStore.saveApiKey(message.payload.apiKey);
-        broadcastAll({
-          type: 'settingsState',
-          payload: { hasApiKey: true, hasGitHubPAT: await keyStore.hasGitHubPAT() },
-        });
+        await broadcastSettings();
         break;
 
       case 'removeApiKey':
         await keyStore.removeApiKey();
-        broadcastAll({
-          type: 'settingsState',
-          payload: { hasApiKey: false, hasGitHubPAT: await keyStore.hasGitHubPAT() },
-        });
+        await broadcastSettings();
         break;
 
       case 'saveGitHubPAT':
         await keyStore.saveGitHubPAT(message.payload.token);
-        broadcastAll({
-          type: 'settingsState',
-          payload: { hasApiKey: await keyStore.hasApiKey(), hasGitHubPAT: true },
-        });
+        await broadcastSettings();
         break;
 
       case 'requestSettings':
-        broadcastAll({
-          type: 'settingsState',
-          payload: {
-            hasApiKey: await keyStore.hasApiKey(),
-            hasGitHubPAT: await keyStore.hasGitHubPAT(),
-          },
-        });
+        await broadcastSettings();
+        break;
+
+      case 'addSkillsPath': {
+        const current = getSkillsPaths();
+        const newPath = message.payload.path;
+        if (!current.includes(newPath)) {
+          await vscode.workspace.getConfiguration('beebuilder').update('skillsPaths', [...current, newPath], vscode.ConfigurationTarget.Workspace);
+        }
+        await broadcastSettings();
+        break;
+      }
+
+      case 'removeSkillsPath': {
+        const current = getSkillsPaths();
+        const filtered = current.filter((p) => p !== message.payload.path);
+        await vscode.workspace.getConfiguration('beebuilder').update('skillsPaths', filtered, vscode.ConfigurationTarget.Workspace);
+        await broadcastSettings();
+        break;
+      }
+
+      case 'saveAgentFrameworkPath':
+        await vscode.workspace.getConfiguration('beebuilder').update('agentFrameworkPath', message.payload.path, vscode.ConfigurationTarget.Workspace);
+        await broadcastSettings();
+        break;
+
+      case 'clearAgentFrameworkPath':
+        await vscode.workspace.getConfiguration('beebuilder').update('agentFrameworkPath', '', vscode.ConfigurationTarget.Workspace);
+        await broadcastSettings();
         break;
 
       // --- Planning ---
@@ -240,15 +321,19 @@ async function handleWebviewMessage(message: WebviewMessage): Promise<void> {
         }
         const model = vscode.workspace.getConfiguration('beebuilder').get<string>('defaultPlannerModel') ?? 'claude-sonnet-4-6';
         planningEngine = new PlanningEngine(apiKey, model);
+        planningMessages = [];
         broadcastAll({ type: 'planningStatus', payload: { phase: 'chatting' } });
+        trackPhase('planning');
 
         try {
           const result = await planningEngine.startPlanning(message.payload.description, message.payload.context);
           for (const msg of planningEngine.getMessages()) {
+            trackPlanningMessage(msg);
             broadcastAll({ type: 'planningMessage', payload: msg });
           }
           if (result.status === 'plan' && result.plan) {
             currentPlan = result.plan;
+            trackPhase('plan_review');
             broadcastAll({ type: 'planReady', payload: result.plan });
           }
         } catch (err) {
@@ -260,20 +345,21 @@ async function handleWebviewMessage(message: WebviewMessage): Promise<void> {
       case 'sendPlanningReply': {
         if (!planningEngine) return;
         broadcastAll({ type: 'planningStatus', payload: { phase: 'chatting' } });
-        broadcastAll({
-          type: 'planningMessage',
-          payload: { role: 'user', content: message.payload.message, timestamp: Date.now() },
-        });
+        const userMsg: PlanningMessage = { role: 'user', content: message.payload.message, timestamp: Date.now() };
+        trackPlanningMessage(userMsg);
+        broadcastAll({ type: 'planningMessage', payload: userMsg });
 
         try {
           const result = await planningEngine.continueConversation(message.payload.message);
           const msgs = planningEngine.getMessages();
           const lastMsg = msgs[msgs.length - 1];
           if (lastMsg?.role === 'assistant') {
+            trackPlanningMessage(lastMsg);
             broadcastAll({ type: 'planningMessage', payload: lastMsg });
           }
           if (result.status === 'plan' && result.plan) {
             currentPlan = result.plan;
+            trackPhase('plan_review');
             broadcastAll({ type: 'planReady', payload: result.plan });
           }
         } catch (err) {
@@ -292,6 +378,7 @@ async function handleWebviewMessage(message: WebviewMessage): Promise<void> {
         architectureEngine = new ArchitectureEngine(apiKey, model);
         try {
           currentArchitecture = await architectureEngine.determineArchitecture(currentPlan);
+          trackPhase('architecture');
           broadcastAll({ type: 'architectureReady', payload: currentArchitecture });
         } catch (err) {
           broadcastAll({ type: 'error', payload: { message: `Architecture failed: ${err instanceof Error ? err.message : String(err)}`, recoverable: true } });
@@ -302,20 +389,22 @@ async function handleWebviewMessage(message: WebviewMessage): Promise<void> {
       case 'revisePlan': {
         if (!planningEngine) return;
         broadcastAll({ type: 'planningStatus', payload: { phase: 'chatting' } });
-        broadcastAll({
-          type: 'planningMessage',
-          payload: { role: 'user', content: `Revision requested: ${message.payload.feedback}`, timestamp: Date.now() },
-        });
+        trackPhase('planning');
+        const reviseUserMsg: PlanningMessage = { role: 'user', content: `Revision requested: ${message.payload.feedback}`, timestamp: Date.now() };
+        trackPlanningMessage(reviseUserMsg);
+        broadcastAll({ type: 'planningMessage', payload: reviseUserMsg });
 
         try {
           const result = await planningEngine.continueConversation(`Please revise the plan: ${message.payload.feedback}`);
           const msgs = planningEngine.getMessages();
           const lastMsg = msgs[msgs.length - 1];
           if (lastMsg?.role === 'assistant') {
+            trackPlanningMessage(lastMsg);
             broadcastAll({ type: 'planningMessage', payload: lastMsg });
           }
           if (result.status === 'plan' && result.plan) {
             currentPlan = result.plan;
+            trackPhase('plan_review');
             broadcastAll({ type: 'planReady', payload: result.plan });
           }
         } catch (err) {
@@ -327,6 +416,7 @@ async function handleWebviewMessage(message: WebviewMessage): Promise<void> {
       case 'approveArchitecture': {
         if (!currentPlan || !currentArchitecture) return;
         broadcastAll({ type: 'planningStatus', payload: { phase: 'ready' } });
+        trackPhase('execution');
         orchestrator?.submitTaskWithArchitecture(
           {
             id: randomUUID(),
@@ -343,20 +433,22 @@ async function handleWebviewMessage(message: WebviewMessage): Promise<void> {
       case 'reviseArchitecture': {
         if (!planningEngine) return;
         broadcastAll({ type: 'planningStatus', payload: { phase: 'chatting' } });
-        broadcastAll({
-          type: 'planningMessage',
-          payload: { role: 'user', content: `Architecture revision: ${message.payload.feedback}`, timestamp: Date.now() },
-        });
+        trackPhase('planning');
+        const archRevMsg: PlanningMessage = { role: 'user', content: `Architecture revision: ${message.payload.feedback}`, timestamp: Date.now() };
+        trackPlanningMessage(archRevMsg);
+        broadcastAll({ type: 'planningMessage', payload: archRevMsg });
 
         try {
           const result = await planningEngine.continueConversation(`The architecture needs changes: ${message.payload.feedback}. Please revise the plan.`);
           const msgs = planningEngine.getMessages();
           const lastMsg = msgs[msgs.length - 1];
           if (lastMsg?.role === 'assistant') {
+            trackPlanningMessage(lastMsg);
             broadcastAll({ type: 'planningMessage', payload: lastMsg });
           }
           if (result.status === 'plan' && result.plan) {
             currentPlan = result.plan;
+            trackPhase('plan_review');
             broadcastAll({ type: 'planReady', payload: result.plan });
           }
         } catch (err) {

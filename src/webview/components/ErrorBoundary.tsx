@@ -38,7 +38,7 @@ export class ErrorBoundary extends Component<Props, State> {
             border: '2px solid #ef5350',
             margin: 8,
             fontFamily: 'monospace',
-            fontSize: 11,
+            fontSize: 13,
             color: '#ef5350',
             whiteSpace: 'pre-wrap',
             wordBreak: 'break-word',
@@ -46,17 +46,17 @@ export class ErrorBoundary extends Component<Props, State> {
             overflow: 'auto',
           }}
         >
-          <div style={{ fontWeight: 'bold', marginBottom: 8, fontSize: 13 }}>
+          <div style={{ fontWeight: 'bold', marginBottom: 8, fontSize: 15 }}>
             [BeeBuilder UI Error]
           </div>
           <div>{this.state.error?.message}</div>
           {this.state.error?.stack && (
-            <div style={{ color: '#888', marginTop: 8, fontSize: 10 }}>
+            <div style={{ color: '#888', marginTop: 8, fontSize: 12 }}>
               {this.state.error.stack}
             </div>
           )}
           {this.state.errorInfo?.componentStack && (
-            <div style={{ color: '#666', marginTop: 8, fontSize: 10 }}>
+            <div style={{ color: '#666', marginTop: 8, fontSize: 12 }}>
               Component stack:{this.state.errorInfo.componentStack}
             </div>
           )}
@@ -70,7 +70,7 @@ export class ErrorBoundary extends Component<Props, State> {
               border: 'none',
               cursor: 'pointer',
               fontFamily: 'monospace',
-              fontSize: 11,
+              fontSize: 13,
             }}
           >
             Retry

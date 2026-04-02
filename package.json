@@ -131,6 +131,17 @@
             "merge"
           ],
           "description": "Git merge strategy when merging agent worktrees"
+        },
+        "beebuilder.skillsPaths": {
+          "type": "array",
+          "items": { "type": "string" },
+          "default": [],
+          "description": "Directory paths containing skill definitions (SKILL.md) that agents can use"
+        },
+        "beebuilder.agentFrameworkPath": {
+          "type": "string",
+          "default": "",
+          "description": "Path to a multi-agent framework directory (e.g. Ruflo, CrewAI) providing agent orchestration config"
         }
       }
     }

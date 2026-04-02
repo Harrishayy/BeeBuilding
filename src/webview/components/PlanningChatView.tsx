@@ -12,6 +12,7 @@ export function PlanningChatView() {
   const currentQuestionIndex = usePipelineStore((s) => s.currentQuestionIndex);
   const answerQuestion = usePipelineStore((s) => s.answerQuestion);
   const clearQuestions = usePipelineStore((s) => s.clearQuestions);
+  const startTransitionLoading = usePipelineStore((s) => s.startTransitionLoading);
 
   const [input, setInput] = useState('');
   const messagesEndRef = useRef<HTMLDivElement>(null);
@@ -39,8 +40,9 @@ export function PlanningChatView() {
       .join('\n\n');
 
     clearQuestions();
+    startTransitionLoading();
     vscode.postMessage({ type: 'sendPlanningReply', payload: { message: combined } });
-  }, [allAnswered, pendingQuestions, questionAnswers, clearQuestions, vscode]);
+  }, [allAnswered, pendingQuestions, questionAnswers, clearQuestions, vscode, startTransitionLoading]);
 
   const handleSend = () => {
     if (!input.trim()) return;
@@ -52,6 +54,7 @@ export function PlanningChatView() {
     }
 
     if (planningStatus === 'generating_plan') return;
+    startTransitionLoading();
     vscode.postMessage({ type: 'sendPlanningReply', payload: { message: input.trim() } });
     setInput('');
   };
@@ -119,7 +122,7 @@ export function PlanningChatView() {
                     <span
                       className="pixel-text"
                       style={{
-                        fontSize: 6,
+                        fontSize: 9,
                         color: isCurrent ? '#4fc3f7' : isAnswered ? '#4caf50' : '#555',
                         fontWeight: isCurrent ? 'bold' : 'normal',
                       }}
@@ -129,7 +132,7 @@ export function PlanningChatView() {
                     <span
                       className="pixel-text"
                       style={{
-                        fontSize: 6,
+                        fontSize: 9,
                         color: isCurrent ? '#e0e0e0' : isAnswered ? '#aaa' : '#555',
                       }}
                     >
@@ -145,7 +148,7 @@ export function PlanningChatView() {
                         borderRadius: 2,
                       }}
                     >
-                      <span className="pixel-text" style={{ fontSize: 6, color: '#81d4fa' }}>
+                      <span className="pixel-text" style={{ fontSize: 9, color: '#81d4fa' }}>
                         {questionAnswers[i]}
                       </span>
                     </div>
@@ -159,7 +162,7 @@ export function PlanningChatView() {
         {isLoading && !hasQuestions && (
           <div
             className="pixel-text"
-            style={{ fontSize: 6, color: '#ffd54f', textAlign: 'center', padding: 8 }}
+            style={{ fontSize: 9, color: '#ffd54f', textAlign: 'center', padding: 8 }}
           >
             {planningStatus === 'generating_plan' ? 'GENERATING PLAN...' : 'THINKING...'}
           </div>
@@ -189,17 +192,17 @@ export function PlanningChatView() {
             <span
               className="pixel-text"
               style={{
-                fontSize: 5,
-                color: '#4fc3f7',
-                background: '#1a2a3e',
-                padding: '2px 6px',
-                borderRadius: 2,
-                flexShrink: 0,
+              fontSize: 8,
+              color: '#4fc3f7',
+              background: '#1a2a3e',
+              padding: '2px 6px',
+              borderRadius: 2,
+              flexShrink: 0,
               }}
             >
               Q{currentQuestionIndex + 1}/{pendingQuestions.length}
             </span>
-            <span className="pixel-text" style={{ fontSize: 5, color: '#90caf9' }}>
+            <span className="pixel-text" style={{ fontSize: 8, color: '#90caf9' }}>
               {currentQuestion}
             </span>
           </div>
@@ -264,10 +267,10 @@ function MessageBubble({ message }: { message: PlanningMessage }) {
           background: isUser ? '#1a3a5c' : '#2a2a3e',
         }}
       >
-        <div className="pixel-text" style={{ fontSize: 5, color: '#888', marginBottom: 4 }}>
+        <div className="pixel-text" style={{ fontSize: 8, color: '#888', marginBottom: 4 }}>
           {isUser ? 'YOU' : 'PLANNER'}
         </div>
-        <div className="pixel-text" style={{ fontSize: 6, whiteSpace: 'pre-wrap' }}>
+        <div className="pixel-text" style={{ fontSize: 9, whiteSpace: 'pre-wrap' }}>
           {content}
         </div>
       </div>

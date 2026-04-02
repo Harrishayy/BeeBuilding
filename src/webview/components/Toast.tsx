@@ -47,10 +47,10 @@ function ToastItem({ toast }: { toast: ToastData }) {
       }}
       onClick={() => removeToast(toast.id)}
     >
-      <span style={{ fontSize: 12, color: colors.text, flexShrink: 0 }}>
+      <span style={{ fontSize: 16, color: colors.text, flexShrink: 0 }}>
         {ICONS[toast.type]}
       </span>
-      <span className="pixel-text" style={{ fontSize: 6, color: colors.text, lineHeight: 1.4 }}>
+      <span className="pixel-text" style={{ fontSize: 10, color: colors.text, lineHeight: 1.5 }}>
         {toast.message}
       </span>
     </div>

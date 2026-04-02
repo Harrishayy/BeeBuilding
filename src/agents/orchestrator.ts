@@ -730,10 +730,19 @@ export class AgentOrchestrator extends EventEmitter<OrchestratorEvents> {
     let apiKey: string | undefined;
 
     try {
-      apiKey = await this.context.secrets.get('beebuilder.claudeApiKey');
+      apiKey = await this.context.secrets.get('beebuilder.anthropicApiKey');
       if (apiKey) log.debug(TAG, 'API key loaded from SecretStorage');
     } catch (err) {
       log.warn(TAG, 'SecretStorage not available', err);
+    }
+
+    if (!apiKey) {
+      try {
+        apiKey = await this.context.secrets.get('beebuilder.claudeApiKey');
+        if (apiKey) log.debug(TAG, 'API key loaded from SecretStorage (legacy key)');
+      } catch {
+        // ignore
+      }
     }
 
     if (!apiKey) {
@@ -744,7 +753,7 @@ export class AgentOrchestrator extends EventEmitter<OrchestratorEvents> {
     }
 
     if (!apiKey) {
-      const msg = 'Claude API key not configured. Set it via SecretStorage or beebuilder.claudeApiKey setting.';
+      const msg = 'Claude API key not configured. Save your Anthropic API key in Settings.';
       log.error(TAG, msg);
       throw new Error(msg);
     }

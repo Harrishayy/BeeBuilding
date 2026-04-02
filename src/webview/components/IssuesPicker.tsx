@@ -42,7 +42,7 @@ export function IssuesPicker({ onImport }: IssuesPickerProps) {
 
       <div style={{ maxHeight: 300, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 4 }}>
         {filtered.length === 0 ? (
-          <div className="pixel-text" style={{ fontSize: 6, color: '#666', textAlign: 'center', padding: 16 }}>
+          <div className="pixel-text" style={{ fontSize: 9, color: '#666', textAlign: 'center', padding: 16 }}>
             {issues.length === 0 ? 'LOADING ISSUES...' : 'NO MATCHING ISSUES'}
           </div>
         ) : (
@@ -60,10 +60,10 @@ export function IssuesPicker({ onImport }: IssuesPickerProps) {
               }}
             >
               <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
-                <span className="pixel-text" style={{ fontSize: 6, color: '#ffd54f' }}>
+                <span className="pixel-text" style={{ fontSize: 9, color: '#ffd54f' }}>
                   #{issue.number}
                 </span>
-                <span className="pixel-text" style={{ fontSize: 6, flex: 1 }}>
+                <span className="pixel-text" style={{ fontSize: 9, flex: 1 }}>
                   {issue.title}
                 </span>
               </div>
@@ -73,7 +73,7 @@ export function IssuesPicker({ onImport }: IssuesPickerProps) {
                     <span
                       key={label}
                       className="pixel-text"
-                      style={{ fontSize: 5, color: '#888', background: '#333', padding: '1px 4px' }}
+                      style={{ fontSize: 8, color: '#888', background: '#333', padding: '1px 4px' }}
                     >
                       {label}
                     </span>
