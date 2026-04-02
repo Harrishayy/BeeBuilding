@@ -1,0 +1,135 @@
+{
+  "name": "agentflow",
+  "displayName": "AgentFlow",
+  "description": "Real-time multi-agent software factory for VS Code / Cursor",
+  "version": "0.1.0",
+  "publisher": "beebuilding",
+  "license": "MIT",
+  "engines": {
+    "vscode": "^1.96.0"
+  },
+  "categories": [
+    "Other"
+  ],
+  "activationEvents": [
+    "onCommand:agentflow.open",
+    "onStartupFinished"
+  ],
+  "main": "./dist/extension.js",
+  "contributes": {
+    "commands": [
+      {
+        "command": "agentflow.open",
+        "title": "AgentFlow: Open Mission Control"
+      },
+      {
+        "command": "agentflow.createSession",
+        "title": "AgentFlow: Create Session"
+      },
+      {
+        "command": "agentflow.submitTask",
+        "title": "AgentFlow: Submit Task"
+      },
+      {
+        "command": "agentflow.approveGate",
+        "title": "AgentFlow: Approve Gate"
+      },
+      {
+        "command": "agentflow.rejectGate",
+        "title": "AgentFlow: Request Changes"
+      },
+      {
+        "command": "agentflow.pausePipeline",
+        "title": "AgentFlow: Pause Pipeline"
+      },
+      {
+        "command": "agentflow.abortTask",
+        "title": "AgentFlow: Abort Task"
+      }
+    ],
+    "configuration": {
+      "title": "AgentFlow",
+      "properties": {
+        "agentflow.claudeApiKey": {
+          "type": "string",
+          "default": "",
+          "description": "Anthropic API key (prefer using SecretStorage instead)",
+          "scope": "application"
+        },
+        "agentflow.defaultPlannerModel": {
+          "type": "string",
+          "default": "claude-opus-4-6",
+          "enum": [
+            "claude-opus-4-6",
+            "claude-sonnet-4-6"
+          ],
+          "description": "Model for the Planner and Reviewer agents"
+        },
+        "agentflow.defaultCoderModel": {
+          "type": "string",
+          "default": "claude-sonnet-4-6",
+          "enum": [
+            "claude-opus-4-6",
+            "claude-sonnet-4-6"
+          ],
+          "description": "Model for the Coder and Tester agents"
+        },
+        "agentflow.timeoutMinutes": {
+          "type": "number",
+          "default": 30,
+          "description": "Maximum minutes per agent before timeout escalation"
+        },
+        "agentflow.gitMergeStrategy": {
+          "type": "string",
+          "default": "squash",
+          "enum": [
+            "squash",
+            "rebase",
+            "merge"
+          ],
+          "description": "Git merge strategy when merging agent worktrees"
+        }
+      }
+    }
+  },
+  "scripts": {
+    "build": "node scripts/build-extension.mjs && node scripts/build-webview.mjs",
+    "build:extension": "node scripts/build-extension.mjs",
+    "build:webview": "node scripts/build-webview.mjs",
+    "watch": "node scripts/build-extension.mjs --watch & node scripts/build-webview.mjs --watch",
+    "lint": "eslint src/",
+    "lint:fix": "eslint src/ --fix",
+    "format": "prettier --write 'src/**/*.{ts,tsx}'",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "package": "vsce package --no-dependencies",
+    "dev": "node scripts/build-extension.mjs --watch & node scripts/build-webview.mjs --watch"
+  },
+  "dependencies": {
+    "@anthropic-ai/sdk": "^0.39.0",
+    "eventemitter3": "^5.0.0",
+    "simple-git": "^3.27.0"
+  },
+  "devDependencies": {
+    "@types/react": "^18.3.0",
+    "@types/react-dom": "^18.3.0",
+    "@types/vscode": "^1.96.0",
+    "autoprefixer": "^10.4.0",
+    "esbuild": "^0.24.0",
+    "eslint": "^9.0.0",
+    "pixel-retroui": "^1.0.0",
+    "postcss": "^8.4.0",
+    "prettier": "^3.4.0",
+    "react": "^18.3.0",
+    "react-dom": "^18.3.0",
+    "tailwindcss": "^3.4.0",
+    "typescript": "^5.7.0",
+    "vitest": "^2.0.0",
+    "zustand": "^5.0.0"
+  },
+  "pnpm": {
+    "onlyBuiltDependencies": [
+      "esbuild"
+    ]
+  }
+}

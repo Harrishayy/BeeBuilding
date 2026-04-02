@@ -1,0 +1,10 @@
+node_modules/
+dist/
+.agentflow/
+*.vsix
+.DS_Store
+.env
+.env.local
+*.log
+out/
+test-workspace/

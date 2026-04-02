@@ -1,0 +1,30 @@
+.pixelContainer {
+  @apply relative inline-block border-solid border-[5px];
+  background-color: var(--input-custom-bg, var(--bg-input, white));
+  color: var(--input-custom-text, var(--text-input, black));
+  border-image-slice: 3;
+  border-image-width: 2;
+  border-image-repeat: stretch;
+  border-image-outset: 2;
+  font-size: 16px;
+  box-shadow: 2px 2px 0 2px var(--input-custom-bg, var(--bg-input, white)),
+    -2px -2px 0 2px var(--input-custom-bg, var(--bg-input, white));
+  border-color: var(--input-custom-border, var(--border-input, black));
+}
+
+.pixelInput {
+  @apply bg-transparent px-2 py-1;
+  color: inherit;
+}
+
+.pixelInput:focus {
+  @apply outline-none;
+}
+
+.pixelInputIconButton {
+  @apply p-1 mr-1;
+}
+
+.pixelInputIconButton:active {
+  @apply top-[2px];
+}
