@@ -8,9 +8,11 @@ const AGENT_COLORS = ['#4fc3f7', '#81c784', '#ffb74d', '#f06292', '#ba68c8', '#4
 export function ArchitectureView() {
   const vscode = useVSCode();
   const architecture = usePipelineStore((s) => s.architecture);
+  const snapshot = usePipelineStore((s) => s.snapshot);
   const startTransitionLoading = usePipelineStore((s) => s.startTransitionLoading);
   const [revising, setRevising] = useState(false);
   const [feedback, setFeedback] = useState('');
+  const [wasApproved, setWasApproved] = useState(false);
 
   if (!architecture) {
     return (
@@ -20,9 +22,20 @@ export function ArchitectureView() {
     );
   }
 
+  const pipelineRan = snapshot && snapshot.stage !== 'idle';
+  const pipelineFailed = snapshot?.stage === 'failed';
+  const pipelineDone = snapshot?.stage === 'done';
+  const showRelaunch = wasApproved || pipelineRan;
+
   const handleApprove = () => {
+    setWasApproved(true);
     startTransitionLoading();
     vscode.postMessage({ type: 'approveArchitecture' });
+  };
+
+  const handleRelaunch = () => {
+    startTransitionLoading();
+    vscode.postMessage({ type: 'relaunchArchitecture' });
   };
 
   const handleRevise = () => {
@@ -107,13 +120,19 @@ export function ArchitectureView() {
           </div>
         </div>
       ) : (
-        <div style={{ display: 'flex', gap: 12, justifyContent: 'center', marginTop: 8 }}>
+        <div style={{ display: 'flex', gap: 12, justifyContent: 'center', marginTop: 8, flexWrap: 'wrap' }}>
           <button className="pixel-btn" onClick={() => setRevising(true)}>
             {'\u270E'} REVISE
           </button>
-          <button className="pixel-btn pixel-btn-primary" onClick={handleApprove}>
-            {'\u2714'} APPROVE & EXECUTE
-          </button>
+          {showRelaunch ? (
+            <button className="pixel-btn pixel-btn-primary" onClick={handleRelaunch}>
+              {'\u21BB'} RELAUNCH
+            </button>
+          ) : (
+            <button className="pixel-btn pixel-btn-primary" onClick={handleApprove}>
+              {'\u2714'} APPROVE & EXECUTE
+            </button>
+          )}
         </div>
       )}
     </div>

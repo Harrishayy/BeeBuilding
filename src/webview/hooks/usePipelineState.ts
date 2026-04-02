@@ -18,6 +18,8 @@ export function usePipelineState(): void {
   const setPendingQuestions = usePipelineStore((s) => s.setPendingQuestions);
   const addToast = usePipelineStore((s) => s.addToast);
   const stopTransitionLoading = usePipelineStore((s) => s.stopTransitionLoading);
+  const setWorkflows = usePipelineStore((s) => s.setWorkflows);
+  const resetForNewWorkflow = usePipelineStore((s) => s.resetForNewWorkflow);
 
   useEffect(() => {
     function handleMessage(event: MessageEvent) {
@@ -121,6 +123,7 @@ export function usePipelineState(): void {
             break;
 
           case 'sessionRestore': {
+            resetForNewWorkflow();
             const { phase, planningMessages, plan, architecture } = msg.payload;
             setPhase(phase);
             for (const m of planningMessages) {
@@ -128,8 +131,13 @@ export function usePipelineState(): void {
             }
             if (plan) setPlan(plan);
             if (architecture) setArchitecture(architecture);
+            stopTransitionLoading();
             break;
           }
+
+          case 'workflowList':
+            setWorkflows(msg.payload);
+            break;
 
           default:
             break;
@@ -142,7 +150,8 @@ export function usePipelineState(): void {
     window.addEventListener('message', handleMessage);
     vscode.postMessage({ type: 'requestState' });
     vscode.postMessage({ type: 'requestSettings' });
+    vscode.postMessage({ type: 'requestWorkflows' });
 
     return () => window.removeEventListener('message', handleMessage);
-  }, [vscode, updateSnapshot, addTimelineEvent, addAgentOutput, addPlanningMessage, setPlanningStatus, setPlan, setArchitecture, setSettings, setPhase, setGithubIssues, setPendingQuestions, addToast, stopTransitionLoading]);
+  }, [vscode, updateSnapshot, addTimelineEvent, addAgentOutput, addPlanningMessage, setPlanningStatus, setPlan, setArchitecture, setSettings, setPhase, setGithubIssues, setPendingQuestions, addToast, stopTransitionLoading, setWorkflows, resetForNewWorkflow]);
 }

@@ -8,6 +8,7 @@ import type {
   PlanningMessage,
   PlanningStatus,
   TimelineEvent,
+  WorkflowSummary,
 } from '../../shared/types';
 import type { GitHubIssuePayload } from '../../shared/messages';
 import type { ToastData } from '../components/Toast';
@@ -42,8 +43,14 @@ interface PipelineStore {
 
   toasts: ToastData[];
 
+  workflows: WorkflowSummary[];
+  activeWorkflowId: string | null;
+
   isTransitionLoading: boolean;
   _transitionLoadingTimeout: ReturnType<typeof setTimeout> | null;
+
+  setWorkflows: (list: WorkflowSummary[]) => void;
+  resetForNewWorkflow: () => void;
 
   updateSnapshot: (snapshot: PipelineSnapshot) => void;
   addTimelineEvent: (event: TimelineEvent) => void;
@@ -101,8 +108,36 @@ export const usePipelineStore = create<PipelineStore>((set) => ({
 
   toasts: [],
 
+  workflows: [],
+  activeWorkflowId: null,
+
   isTransitionLoading: false,
   _transitionLoadingTimeout: null,
+
+  setWorkflows: (list) => set({ workflows: list }),
+
+  resetForNewWorkflow: () =>
+    set((state) => {
+      if (state._transitionLoadingTimeout) clearTimeout(state._transitionLoadingTimeout);
+      return {
+        currentPhase: 'task' as AppPhase,
+        planningMessages: [],
+        planningStatus: null,
+        plan: null,
+        architecture: null,
+        snapshot: null,
+        timelineEvents: [],
+        agentOutputs: {},
+        selectedAgent: null,
+        currentView: 'map' as const,
+        pendingQuestions: [],
+        questionAnswers: [],
+        currentQuestionIndex: 0,
+        previousPhase: null,
+        isTransitionLoading: false,
+        _transitionLoadingTimeout: null,
+      };
+    }),
 
   updateSnapshot: (snapshot) => set({ snapshot }),
 

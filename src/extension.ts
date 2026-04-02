@@ -5,7 +5,14 @@ import { AgentOrchestrator } from './agents/orchestrator.js';
 import { PlanningEngine } from './agents/planning-engine.js';
 import { ArchitectureEngine } from './agents/architecture-engine.js';
 import { KeyStore } from './state/key-store.js';
-import { loadSession, patchSession, clearSession } from './state/workspace-session.js';
+import {
+  loadSession,
+  patchSession,
+  getWorkflowList,
+  createNewWorkflow,
+  setActiveWorkflow,
+  loadWorkflow,
+} from './state/workspace-session.js';
 import { GitHubClient } from './github/github-client.js';
 import { log } from './util/logger.js';
 import type { ExtensionMessage } from './shared/messages.js';
@@ -66,6 +73,10 @@ function persistState(): void {
     plan: currentPlan ?? null,
     architecture: currentArchitecture ?? null,
   });
+}
+
+function broadcastWorkflows(): void {
+  broadcastAll({ type: 'workflowList', payload: getWorkflowList() });
 }
 
 function trackPhase(phase: AppPhase): void {
@@ -262,6 +273,7 @@ async function handleWebviewMessage(message: WebviewMessage): Promise<void> {
           broadcastAll({ type: 'pipelineState', payload: orchestrator.getSnapshot() });
         }
         restoreSessionToWebview();
+        broadcastWorkflows();
         break;
 
       // --- Settings ---
@@ -450,6 +462,7 @@ async function handleWebviewMessage(message: WebviewMessage): Promise<void> {
             createdAt: Date.now(),
           },
           currentArchitecture,
+          currentPlan,
         );
         break;
       }
@@ -520,6 +533,90 @@ async function handleWebviewMessage(message: WebviewMessage): Promise<void> {
         } catch (err) {
           log.error('Extension', 'Failed to import issue', err);
         }
+        break;
+      }
+
+      // --- Workflow management ---
+      case 'requestWorkflows':
+        broadcastWorkflows();
+        break;
+
+      case 'newWorkflow': {
+        persistState();
+        const newId = createNewWorkflow();
+        currentPlan = undefined;
+        currentArchitecture = undefined;
+        planningEngine = undefined;
+        planningMessages = [];
+        currentPhase = 'task';
+
+        broadcastAll({
+          type: 'sessionRestore',
+          payload: { phase: 'task', planningMessages: [], plan: null, architecture: null },
+        });
+        broadcastWorkflows();
+        log.info('Extension', `New workflow created: ${newId}`);
+        break;
+      }
+
+      case 'switchWorkflow': {
+        persistState();
+        const targetId = message.payload.workflowId;
+        const workflow = loadWorkflow(targetId);
+        if (!workflow) {
+          broadcastAll({ type: 'error', payload: { message: 'Workflow not found', recoverable: true } });
+          break;
+        }
+
+        setActiveWorkflow(targetId);
+        currentPhase = workflow.phase;
+        planningMessages = workflow.planningMessages;
+        currentPlan = workflow.plan ?? undefined;
+        currentArchitecture = workflow.architecture ?? undefined;
+        planningEngine = undefined;
+
+        broadcastAll({
+          type: 'sessionRestore',
+          payload: {
+            phase: workflow.phase,
+            planningMessages: workflow.planningMessages,
+            plan: workflow.plan,
+            architecture: workflow.architecture,
+          },
+        });
+        broadcastWorkflows();
+        log.info('Extension', `Switched to workflow: ${targetId}`);
+        break;
+      }
+
+      case 'relaunchArchitecture': {
+        if (!currentPlan || !currentArchitecture) {
+          broadcastAll({ type: 'error', payload: { message: 'Plan or architecture data is missing. Please go back and regenerate.', recoverable: true } });
+          break;
+        }
+        if (!orchestrator) {
+          broadcastAll({ type: 'error', payload: { message: 'Orchestrator not initialized', recoverable: true } });
+          break;
+        }
+        const apiKey = await keyStore.getApiKey();
+        if (!apiKey) {
+          broadcastAll({ type: 'error', payload: { message: 'API key not configured. Set it in Settings first.', recoverable: true } });
+          break;
+        }
+        log.info('Extension', `Re-launching architecture: "${currentPlan.title}" with ${currentArchitecture.agents.length} agents`);
+        broadcastAll({ type: 'planningStatus', payload: { phase: 'ready' } });
+        trackPhase('execution');
+        orchestrator.submitTaskWithArchitecture(
+          {
+            id: randomUUID(),
+            title: currentPlan.title,
+            description: currentPlan.summary,
+            priority: 'medium',
+            createdAt: Date.now(),
+          },
+          currentArchitecture,
+          currentPlan,
+        );
         break;
       }
 

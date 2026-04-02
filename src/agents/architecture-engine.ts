@@ -11,7 +11,8 @@ Decide:
 2. Each agent's role, name, and responsibilities
 3. What tools each agent needs (from: read_file, write_file, run_command, search_codebase, list_files, create_review_comment)
 4. Execution order - which agents run sequentially vs in parallel
-5. Estimated time per agent
+5. Approval gates - which execution groups need user approval before proceeding
+6. Estimated time per agent
 
 Respond with valid JSON only:
 {
@@ -26,10 +27,12 @@ Respond with valid JSON only:
     }
   ],
   "executionOrder": [["agent-id-1"], ["agent-id-2", "agent-id-3"]],
+  "gateAfterGroup": { "1": "required" },
   "estimatedTime": "15 minutes"
 }
 
-executionOrder is an array of arrays. Each inner array is a group of agents that can run in parallel. Groups execute sequentially.`;
+executionOrder is an array of arrays. Each inner array is a group of agents that can run in parallel. Groups execute sequentially.
+gateAfterGroup maps group index (0-based) to "required", "optional", or "skip". The last group should typically be "required" so the user can review before merge. Omit groups that should default to "optional".`;
 
 export class ArchitectureEngine {
   private llmClient: LLMClient;
@@ -119,6 +122,7 @@ Determine the agent architecture now.`;
       agents,
       executionOrder: [['planner'], ['coder'], ['tester'], ['reviewer']],
       estimatedTime: `${plan.complexity === 'high' ? 30 : plan.complexity === 'medium' ? 20 : 10} minutes`,
+      gateAfterGroup: { 1: 'optional', 3: 'required' },
     };
   }
 }

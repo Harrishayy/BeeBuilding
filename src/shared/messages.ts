@@ -9,6 +9,7 @@ import type {
   PlanningStatus,
   TimelineEvent,
   GatePendingInfo,
+  WorkflowSummary,
 } from './types.js';
 
 export interface GitHubIssuePayload {
@@ -63,7 +64,8 @@ export type ExtensionMessage =
         plan: PlanDocument | null;
         architecture: AgentArchitecture | null;
       };
-    };
+    }
+  | { type: 'workflowList'; payload: WorkflowSummary[] };
 
 // Webview -> Extension Host
 export type WebviewMessage =
@@ -96,4 +98,8 @@ export type WebviewMessage =
   | { type: 'approveArchitecture' }
   | { type: 'reviseArchitecture'; payload: { feedback: string } }
   | { type: 'fetchIssues'; payload: { filter?: string } }
-  | { type: 'importIssue'; payload: { issueNumber: number } };
+  | { type: 'importIssue'; payload: { issueNumber: number } }
+  | { type: 'newWorkflow' }
+  | { type: 'switchWorkflow'; payload: { workflowId: string } }
+  | { type: 'requestWorkflows' }
+  | { type: 'relaunchArchitecture' };

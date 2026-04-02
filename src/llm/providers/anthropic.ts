@@ -20,7 +20,7 @@ export class AnthropicProvider {
   private client: Anthropic;
 
   constructor(apiKey: string) {
-    this.client = new Anthropic({ apiKey });
+    this.client = new Anthropic({ apiKey, timeout: 15 * 60 * 1000 });
   }
 
   async streamChat(params: AnthropicStreamParams): Promise<LLMResponse> {

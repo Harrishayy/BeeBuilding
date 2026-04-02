@@ -7,20 +7,20 @@ agents:
   planner:
     model: claude-opus-4-6
     approvalRequired: false
-    timeoutMinutes: 30
+    timeoutMinutes: 45
   coder:
     model: claude-sonnet-4-6
     approvalRequired: true
     approvalAfterLines: 100
-    timeoutMinutes: 30
+    timeoutMinutes: 45
   tester:
     model: claude-sonnet-4-6
     approvalRequired: true
-    timeoutMinutes: 30
+    timeoutMinutes: 45
   reviewer:
     model: claude-opus-4-6
     approvalRequired: true
-    timeoutMinutes: 30
+    timeoutMinutes: 45
 ```
 
 ## Gates

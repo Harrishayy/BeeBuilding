@@ -26,7 +26,8 @@ export type FSMEvent =
   | 'merged'
   | 'error'
   | 'reset'
-  | 'agentComplete';
+  | 'agentComplete'
+  | 'groupComplete';
 
 interface FSMEvents {
   stateChange: (snapshot: PipelineSnapshot) => void;
@@ -79,6 +80,9 @@ export class PipelineFSM extends EventEmitter<FSMEvents> {
   private startedAt: number | null = null;
   private errorMessage: string | null = null;
   private dynamicAgentNames: string[] = DEFAULT_AGENT_NAMES;
+  private _dynamicMode = false;
+  private _currentGroupIndex = 0;
+  private _totalGroups = 0;
 
   constructor() {
     super();
@@ -86,6 +90,18 @@ export class PipelineFSM extends EventEmitter<FSMEvents> {
       DEFAULT_AGENT_NAMES.map((n) => [n, createDefaultAgentState(n)]),
     );
     log.debug(TAG, 'FSM initialized in idle state');
+  }
+
+  get dynamicMode(): boolean {
+    return this._dynamicMode;
+  }
+
+  get currentGroupIndex(): number {
+    return this._currentGroupIndex;
+  }
+
+  get totalGroups(): number {
+    return this._totalGroups;
   }
 
   setSessionId(id: string): void {
@@ -105,12 +121,21 @@ export class PipelineFSM extends EventEmitter<FSMEvents> {
     log.info(TAG, `Task set: "${task.title}" (id=${task.id})`);
   }
 
-  setDynamicAgents(agents: AgentSpec[]): void {
+  setDynamicAgents(agents: AgentSpec[], totalGroups: number): void {
+    this._dynamicMode = true;
+    this._totalGroups = totalGroups;
+    this._currentGroupIndex = 0;
     this.dynamicAgentNames = agents.map((a) => a.id);
     this.agentStates = Object.fromEntries(
       this.dynamicAgentNames.map((n) => [n, createDefaultAgentState(n)]),
     );
-    log.info(TAG, `Dynamic agents set: ${this.dynamicAgentNames.join(', ')}`);
+    log.info(TAG, `Dynamic agents set: ${this.dynamicAgentNames.join(', ')} (${totalGroups} groups)`);
+  }
+
+  advanceGroup(): void {
+    this._currentGroupIndex++;
+    log.info(TAG, `Advanced to group ${this._currentGroupIndex}/${this._totalGroups}`);
+    this.emit('stateChange', this.getSnapshot());
   }
 
   transition(event: FSMEvent): void {
@@ -132,6 +157,40 @@ export class PipelineFSM extends EventEmitter<FSMEvents> {
       const msg = `Cannot reset from stage "${this.stage}"`;
       log.error(TAG, msg);
       throw new Error(msg);
+    }
+
+    if (this._dynamicMode) {
+      if (event === 'groupComplete') {
+        log.info(TAG, `Transition: ${prevStage} -[groupComplete]-> dynamic_approval`);
+        this.stage = 'dynamic_approval';
+        this.currentGate = null;
+        this.emit('stateChange', this.getSnapshot());
+        return;
+      }
+
+      if (event === 'approved' && this.stage === 'dynamic_approval') {
+        this.stage = 'dynamic_group';
+        this.currentGate = null;
+        log.info(TAG, `Transition: dynamic_approval -[approved]-> dynamic_group`);
+        this.emit('stateChange', this.getSnapshot());
+        return;
+      }
+
+      if (event === 'rejected' && this.stage === 'dynamic_approval') {
+        this.stage = 'dynamic_group';
+        this.currentGate = null;
+        log.info(TAG, `Transition: dynamic_approval -[rejected]-> dynamic_group (re-run)`);
+        this.emit('stateChange', this.getSnapshot());
+        return;
+      }
+
+      if (event === 'merged') {
+        this.stage = 'done';
+        this.currentGate = null;
+        log.info(TAG, `Transition: ${prevStage} -[merged]-> done`);
+        this.emit('stateChange', this.getSnapshot());
+        return;
+      }
     }
 
     const stageTransitions = TRANSITION_TABLE[this.stage];
@@ -171,6 +230,9 @@ export class PipelineFSM extends EventEmitter<FSMEvents> {
       currentGate: this.currentGate ? { ...this.currentGate } : null,
       startedAt: this.startedAt,
       error: this.errorMessage,
+      dynamicMode: this._dynamicMode,
+      currentGroupIndex: this._currentGroupIndex,
+      totalGroups: this._totalGroups,
     };
   }
 
@@ -220,6 +282,9 @@ export class PipelineFSM extends EventEmitter<FSMEvents> {
     this.currentGate = null;
     this.startedAt = null;
     this.errorMessage = null;
+    this._dynamicMode = false;
+    this._currentGroupIndex = 0;
+    this._totalGroups = 0;
     this.dynamicAgentNames = DEFAULT_AGENT_NAMES;
     this.agentStates = Object.fromEntries(
       DEFAULT_AGENT_NAMES.map((n) => [n, createDefaultAgentState(n)]),

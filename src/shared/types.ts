@@ -13,7 +13,9 @@ export type PipelineStage =
   | 'review_approval'
   | 'merging'
   | 'done'
-  | 'failed';
+  | 'failed'
+  | 'dynamic_group'
+  | 'dynamic_approval';
 
 export type AgentStatus = 'idle' | 'working' | 'done' | 'blocked' | 'error';
 
@@ -51,10 +53,13 @@ export interface AgentSpec {
   systemPrompt: string;
 }
 
+export type GateLevel = 'required' | 'optional' | 'skip';
+
 export interface AgentArchitecture {
   agents: AgentSpec[];
   executionOrder: string[][];
   estimatedTime: string;
+  gateAfterGroup?: Record<number, GateLevel>;
 }
 
 export interface TaskDefinition {
@@ -123,6 +128,9 @@ export interface PipelineSnapshot {
   currentGate: GatePendingInfo | null;
   startedAt: number | null;
   error: string | null;
+  dynamicMode: boolean;
+  currentGroupIndex: number;
+  totalGroups: number;
 }
 
 export interface AgentState {
@@ -153,6 +161,13 @@ export interface TimelineEvent {
   stage: PipelineStage;
   payload: Record<string, unknown>;
   message: string;
+}
+
+export interface WorkflowSummary {
+  id: string;
+  title: string;
+  phase: AppPhase;
+  updatedAt: number;
 }
 
 export type TimelineEventType =

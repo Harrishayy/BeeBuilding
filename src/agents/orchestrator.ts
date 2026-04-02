@@ -8,11 +8,14 @@ import type {
   AgentArchitecture,
   AgentSpec,
   GateConfig,
+  GateLevel,
   GatePendingInfo,
   PipelineSnapshot,
   PipelineStage,
+  PlanDocument,
   TaskDefinition,
   TimelineEvent,
+  SessionConfig,
 } from '../shared/types.js';
 import { PipelineFSM, type FSMEvent } from '../state/pipeline-state.js';
 import { SessionManager } from '../state/session-manager.js';
@@ -23,9 +26,30 @@ import { ToolExecutor } from './tool-executor.js';
 import { plannerTools, coderTools, testerTools, reviewerTools, type ToolDefinition } from './tools.js';
 import { parseAgentsConfig } from '../config/agents-parser.js';
 import { log } from '../util/logger.js';
-import type { SessionConfig } from '../shared/types.js';
 
 const TAG = 'Orchestrator';
+
+const DEFAULT_TIMEOUT_MS = 60 * 60 * 1000;
+
+const CANONICAL_TOOL_MAP: Map<string, ToolDefinition> = (() => {
+  const map = new Map<string, ToolDefinition>();
+  for (const list of [plannerTools, coderTools, testerTools, reviewerTools]) {
+    for (const tool of list) {
+      map.set(tool.name, tool);
+    }
+  }
+  return map;
+})();
+
+function withTimeout<T>(promise: Promise<T>, ms: number, label: string): Promise<T> {
+  return new Promise<T>((resolve, reject) => {
+    const timer = setTimeout(() => reject(new Error(`${label} timed out after ${(ms / 60000).toFixed(0)}m`)), ms);
+    promise.then(
+      (v) => { clearTimeout(timer); resolve(v); },
+      (e) => { clearTimeout(timer); reject(e); },
+    );
+  });
+}
 
 interface OrchestratorEvents {
   stateChange: (snapshot: PipelineSnapshot) => void;
@@ -90,6 +114,7 @@ export class AgentOrchestrator extends EventEmitter<OrchestratorEvents> {
   private timelineLog: TimelineLog | null = null;
 
   private sessionConfig: SessionConfig | null = null;
+  private currentPlan: PlanDocument | null = null;
   private agentOutputs: Map<AgentName, string> = new Map();
   private paused = false;
   private aborted = false;
@@ -230,14 +255,15 @@ export class AgentOrchestrator extends EventEmitter<OrchestratorEvents> {
     });
   }
 
-  async submitTaskWithArchitecture(task: TaskDefinition, architecture: AgentArchitecture): Promise<void> {
+  async submitTaskWithArchitecture(task: TaskDefinition, architecture: AgentArchitecture, plan?: PlanDocument): Promise<void> {
     log.info(TAG, `Dynamic task submitted: "${task.title}" with ${architecture.agents.length} agents`);
 
     if (!this.sessionConfig) {
       this.createSession();
     }
 
-    this.fsm.setDynamicAgents(architecture.agents);
+    this.currentPlan = plan ?? null;
+    this.fsm.setDynamicAgents(architecture.agents, architecture.executionOrder.length);
 
     this.runDynamicPipeline(task, architecture).catch((err: unknown) => {
       const message = err instanceof Error ? err.message : String(err);
@@ -846,12 +872,13 @@ export class AgentOrchestrator extends EventEmitter<OrchestratorEvents> {
     await this.ensureClaudeClient();
 
     this.fsm.setTask(task);
-    this.fsm.setStage('planning');
-    this.emitTimelineEvent('pipeline_started', null, 'planning', `Dynamic pipeline: ${task.title}`);
+    this.fsm.setStage('dynamic_group');
+    this.emitTimelineEvent('pipeline_started', null, 'dynamic_group', `Dynamic pipeline: ${task.title}`);
 
     const agentMap = new Map(architecture.agents.map((a) => [a.id, a]));
+    const totalGroups = architecture.executionOrder.length;
 
-    for (let groupIdx = 0; groupIdx < architecture.executionOrder.length; groupIdx++) {
+    for (let groupIdx = 0; groupIdx < totalGroups; groupIdx++) {
       if (this.aborted) throw new Error('Pipeline aborted by user');
 
       if (this.paused) {
@@ -861,43 +888,161 @@ export class AgentOrchestrator extends EventEmitter<OrchestratorEvents> {
 
       const group = architecture.executionOrder[groupIdx];
       const isParallel = group.length > 1;
-      log.info(TAG, `Execution group ${groupIdx + 1}/${architecture.executionOrder.length}: [${group.join(', ')}] ${isParallel ? '(parallel)' : ''}`);
+      log.info(TAG, `=== Execution group ${groupIdx + 1}/${totalGroups}: [${group.join(', ')}] ${isParallel ? '(parallel)' : ''} ===`);
 
-      const agentPromises = group.map(async (agentId) => {
-        const spec = agentMap.get(agentId);
-        if (!spec) {
-          log.warn(TAG, `Unknown agent id: ${agentId}`);
-          return;
+      this.fsm.setStage('dynamic_group');
+
+      const groupSpecs = group
+        .map((id) => agentMap.get(id))
+        .filter((s): s is AgentSpec => {
+          if (!s) log.warn(TAG, `Unknown agent id in executionOrder`);
+          return !!s;
+        });
+
+      await this.runDynamicGroup(groupSpecs, task, architecture, groupIdx);
+
+      this.fsm.transition('groupComplete');
+
+      const gateLevel = this.resolveGateForGroup(groupIdx, totalGroups, architecture);
+
+      if (gateLevel === 'skip') {
+        log.debug(TAG, `Gate skip for group ${groupIdx}`);
+        this.emitTimelineEvent('gate_approved', null, 'dynamic_approval', `Gate auto-skipped for group ${groupIdx + 1}`);
+        this.fsm.transition('approved');
+      } else if (gateLevel === 'optional') {
+        log.debug(TAG, `Optional gate auto-approved for group ${groupIdx}`);
+        this.emitTimelineEvent('gate_approved', null, 'dynamic_approval', `Optional gate auto-approved for group ${groupIdx + 1}`);
+        this.fsm.transition('approved');
+      } else {
+        const writerIds = groupSpecs.filter((s) => this.isWriterAgent(s)).map((s) => s.id);
+        const combinedDiff = await this.computeCombinedDiffStats(writerIds);
+        const nextGroupAgents = groupIdx + 1 < totalGroups ? architecture.executionOrder[groupIdx + 1] : [];
+        const gatePending: GatePendingInfo = {
+          stage: 'dynamic_approval',
+          fromAgent: group.join(', '),
+          toAgent: nextGroupAgents.join(', ') || 'merge',
+          filesChanged: combinedDiff.filesChanged,
+          linesAdded: combinedDiff.linesAdded,
+          linesRemoved: combinedDiff.linesRemoved,
+          timestamp: Date.now(),
+        };
+
+        this.fsm.setGatePending(gatePending);
+        this.emit('gatePending', gatePending);
+        this.emitTimelineEvent('gate_pending', null, 'dynamic_approval', `Awaiting approval after group ${groupIdx + 1}`);
+
+        const approved = await this.waitForGateApproval();
+        log.info(TAG, `Gate after group ${groupIdx + 1}: ${approved ? 'approved' : 'rejected'}`);
+
+        if (approved) {
+          this.fsm.transition('approved');
+          this.emit('gateResolved', { stage: 'dynamic_approval', resolution: 'approved' });
+          this.emitTimelineEvent('gate_approved', null, 'dynamic_approval', `Group ${groupIdx + 1} approved`);
+        } else {
+          if (this.aborted) throw new Error('Pipeline aborted by user');
+
+          this.emit('gateResolved', { stage: 'dynamic_approval', resolution: 'rejected' });
+          this.emitTimelineEvent('gate_rejected', null, 'dynamic_approval',
+            `Group ${groupIdx + 1} rejected: ${this.rejectionFeedback || 'No feedback'}`);
+          this.fsm.transition('rejected');
+
+          log.info(TAG, `Re-running group ${groupIdx + 1} with rejection feedback`);
+          for (const spec of groupSpecs) {
+            this.fsm.updateAgentState(spec.id, { status: 'idle', progress: 0 });
+          }
+          groupIdx--;
+          continue;
         }
+      }
 
-        this.fsm.updateAgentState(agentId, { status: 'working', currentTask: task.title, progress: 0 });
-        this.emitTimelineEvent('agent_started', agentId, 'coding', `${spec.name} started`);
+      this.fsm.advanceGroup();
 
-        try {
-          await this.runDynamicAgent(spec, task);
-          this.fsm.updateAgentState(agentId, { status: 'done', progress: 100 });
-          this.emitTimelineEvent('agent_completed', agentId, 'coding', `${spec.name} completed`);
-        } catch (err) {
-          const msg = err instanceof Error ? err.message : String(err);
-          this.fsm.updateAgentState(agentId, { status: 'error' });
-          this.emitTimelineEvent('agent_error', agentId, 'coding', msg);
-          throw err;
-        }
-      });
-
-      await Promise.all(agentPromises);
+      if (groupIdx + 1 < totalGroups) {
+        const nextGroup = architecture.executionOrder[groupIdx + 1];
+        this.emitTimelineEvent('handoff', group.join(', '), 'dynamic_group',
+          `Handoff from [${group.join(', ')}] to [${nextGroup.join(', ')}]`);
+      }
     }
 
-    log.info(TAG, 'Dynamic pipeline complete, merging');
+    log.info(TAG, 'All dynamic groups complete, beginning merge');
     this.fsm.setStage('merging');
     this.emitTimelineEvent('merge_started', 'orchestrator', 'merging', 'Merging changes');
 
-    await this.performMerge();
+    await this.performDynamicMerge(architecture);
     this.fsm.transition('merged');
+
+    this.emitTimelineEvent('merge_completed', 'orchestrator', 'done', 'Merge complete');
     this.emitTimelineEvent('pipeline_completed', null, 'done', 'Dynamic pipeline completed');
+    log.info(TAG, 'Dynamic pipeline completed successfully');
   }
 
-  private async runDynamicAgent(spec: AgentSpec, task: TaskDefinition): Promise<void> {
+  private async runDynamicGroup(
+    specs: AgentSpec[],
+    task: TaskDefinition,
+    architecture: AgentArchitecture,
+    groupIdx: number,
+  ): Promise<void> {
+    for (const spec of specs) {
+      this.fsm.updateAgentState(spec.id, { status: 'working', currentTask: task.title, progress: 0 });
+      this.emitTimelineEvent('agent_started', spec.id, 'dynamic_group', `${spec.name} started`);
+    }
+
+    const timeoutMs = this.getAgentTimeoutMs();
+
+    const results = await Promise.allSettled(
+      specs.map((spec) =>
+        withTimeout(
+          this.runDynamicAgent(spec, task, architecture, groupIdx),
+          timeoutMs,
+          `Agent "${spec.name}" (${spec.id})`,
+        ),
+      ),
+    );
+
+    const failures: string[] = [];
+    let hasSuccessfulWriter = false;
+
+    for (let i = 0; i < specs.length; i++) {
+      const spec = specs[i];
+      const result = results[i];
+
+      if (result.status === 'fulfilled') {
+        this.fsm.updateAgentState(spec.id, { status: 'done', progress: 100 });
+        this.emitTimelineEvent('agent_completed', spec.id, 'dynamic_group', `${spec.name} completed`);
+        if (this.isWriterAgent(spec)) hasSuccessfulWriter = true;
+      } else {
+        const msg = result.reason instanceof Error ? result.reason.message : String(result.reason);
+        log.error(TAG, `Agent ${spec.id} failed: ${msg}`);
+        this.fsm.updateAgentState(spec.id, { status: 'error' });
+        this.emitTimelineEvent('agent_error', spec.id, 'dynamic_group', msg);
+        failures.push(`${spec.name}: ${msg}`);
+      }
+    }
+
+    const writerSpecs = specs.filter((s) => this.isWriterAgent(s));
+    const allFailed = failures.length === specs.length;
+
+    if (allFailed) {
+      throw new Error(`All agents in group failed:\n${failures.join('\n')}`);
+    }
+
+    if (failures.length > 0 && writerSpecs.length > 0 && !hasSuccessfulWriter) {
+      throw new Error(`All writer agents in group failed:\n${failures.join('\n')}`);
+    }
+
+    if (failures.length > 0) {
+      log.warn(TAG, `${failures.length}/${specs.length} agents failed in group, continuing with partial results`);
+      this.emitTimelineEvent('agent_error', null, 'dynamic_group',
+        `Partial failures in group: ${failures.length}/${specs.length} agents failed`);
+    }
+  }
+
+  private async runDynamicAgent(
+    spec: AgentSpec,
+    task: TaskDefinition,
+    architecture: AgentArchitecture,
+    groupIdx: number,
+  ): Promise<void> {
     if (!this.claudeClient || !this.worktreeManager || !this.sessionConfig) {
       throw new Error('Orchestrator not fully initialized');
     }
@@ -911,8 +1056,10 @@ export class AgentOrchestrator extends EventEmitter<OrchestratorEvents> {
 
     const toolExecutor = new ToolExecutor(worktreePath);
     const tools = this.resolveToolsForSpec(spec);
-    const userMessage = `## Task\n**${task.title}**\n\n${task.description}`;
+    const userMessage = this.buildDynamicAgentContext(spec, task, architecture, groupIdx);
     const outputChunks: string[] = [];
+
+    log.debug(TAG, `Calling Claude API for dynamic agent ${spec.id} (model=${spec.model})`);
 
     const output = await this.claudeClient.createAgentMessage({
       model: spec.model,
@@ -925,12 +1072,22 @@ export class AgentOrchestrator extends EventEmitter<OrchestratorEvents> {
         this.emit('agentOutput', { agent: spec.id, chunk, timestamp: Date.now() });
       },
       onToolUse: async (toolName, input) => {
-        this.emitTimelineEvent('tool_call', spec.id, 'coding', `Tool: ${toolName}`);
-        return toolExecutor.execute(toolName, input);
+        log.debug(TAG, `${spec.id} tool call: ${toolName}`, input);
+        this.emitTimelineEvent('tool_call', spec.id, 'dynamic_group', `Tool: ${toolName}`);
+        try {
+          const result = await toolExecutor.execute(toolName, input);
+          log.debug(TAG, `${spec.id} tool ${toolName} returned (${result.length} chars)`);
+          return result;
+        } catch (err) {
+          log.error(TAG, `${spec.id} tool ${toolName} failed`, err);
+          throw err;
+        }
       },
     });
 
+    log.info(TAG, `${spec.id} produced ${output.length} chars of output`);
     this.agentOutputs.set(spec.id, output);
+
     try {
       this.sessionManager.storeAgentOutput(this.sessionConfig.id, spec.id, output);
     } catch (err) {
@@ -938,26 +1095,186 @@ export class AgentOrchestrator extends EventEmitter<OrchestratorEvents> {
     }
   }
 
-  private resolveToolsForSpec(spec: AgentSpec): ToolDefinition[] {
-    const allTools: Record<string, ToolDefinition[]> = {
-      planner: plannerTools,
-      coder: coderTools,
-      tester: testerTools,
-      reviewer: reviewerTools,
-    };
+  private buildDynamicAgentContext(
+    spec: AgentSpec,
+    task: TaskDefinition,
+    architecture: AgentArchitecture,
+    groupIdx: number,
+  ): string {
+    const parts: string[] = [];
 
-    if (allTools[spec.id]) return allTools[spec.id];
+    parts.push(`## Task\n**${task.title}**\n\n${task.description}`);
 
-    const toolMap = new Map<string, ToolDefinition>();
-    for (const list of [plannerTools, coderTools, testerTools, reviewerTools]) {
-      for (const tool of list) {
-        toolMap.set(tool.name, tool);
+    if (task.priority) {
+      parts.push(`\n**Priority**: ${task.priority}`);
+    }
+    if (task.estimatedComplexity) {
+      parts.push(`**Estimated Complexity**: ${task.estimatedComplexity}`);
+    }
+
+    if (this.currentPlan) {
+      const plan = this.currentPlan;
+      parts.push(`\n## Implementation Plan`);
+      parts.push(`**Summary**: ${plan.summary}`);
+      if (plan.requirements.length > 0) {
+        parts.push(`\n### Requirements\n${plan.requirements.map((r, i) => `${i + 1}. ${r}`).join('\n')}`);
+      }
+      if (plan.fileChanges.length > 0) {
+        parts.push(`\n### File Changes\n${plan.fileChanges.map((f) => `- **${f.action}** \`${f.path}\`: ${f.description}`).join('\n')}`);
+      }
+      if (plan.risks.length > 0) {
+        parts.push(`\n### Risks\n${plan.risks.map((r) => `- ${r}`).join('\n')}`);
       }
     }
 
-    return spec.tools
-      .map((name) => toolMap.get(name))
-      .filter((t): t is ToolDefinition => t !== undefined);
+    parts.push(`\n## Your Role\n**${spec.name}**: ${spec.role}`);
+
+    const currentGroup = architecture.executionOrder[groupIdx];
+    const parallelPeers = currentGroup.filter((id) => id !== spec.id);
+    if (parallelPeers.length > 0) {
+      const peerNames = parallelPeers
+        .map((id) => architecture.agents.find((a) => a.id === id)?.name ?? id)
+        .join(', ');
+      parts.push(`\n**Note**: You are running in parallel with: ${peerNames}. Coordinate by avoiding conflicting file edits.`);
+    }
+
+    const priorGroupIds: string[] = [];
+    for (let g = 0; g < groupIdx; g++) {
+      priorGroupIds.push(...architecture.executionOrder[g]);
+    }
+
+    if (priorGroupIds.length > 0) {
+      const priorOutputs: string[] = [];
+      for (const priorId of priorGroupIds) {
+        const output = this.agentOutputs.get(priorId);
+        if (output) {
+          const priorSpec = architecture.agents.find((a) => a.id === priorId);
+          const label = priorSpec ? `${priorSpec.name} (${priorSpec.role})` : priorId;
+          const truncated = output.length > 4000 ? output.slice(0, 4000) + '\n...(truncated)' : output;
+          priorOutputs.push(`### ${label}\n${truncated}`);
+        }
+      }
+      if (priorOutputs.length > 0) {
+        parts.push(`\n## Prior Agent Outputs\n${priorOutputs.join('\n\n')}`);
+      }
+    }
+
+    if (this.rejectionFeedback) {
+      parts.push(
+        `\n## Rejection Feedback\nYour previous output was rejected. Address this feedback:\n${this.rejectionFeedback}`,
+      );
+      this.rejectionFeedback = '';
+    }
+
+    return parts.join('\n');
+  }
+
+  private async performDynamicMerge(architecture: AgentArchitecture): Promise<void> {
+    if (!this.worktreeManager || !this.sessionConfig) {
+      log.warn(TAG, 'performDynamicMerge called but no worktree/session');
+      return;
+    }
+
+    const strategy = this.sessionConfig.gitMergeStrategy;
+
+    const writerAgentIds: string[] = [];
+    for (const group of architecture.executionOrder) {
+      for (const agentId of group) {
+        const spec = architecture.agents.find((a) => a.id === agentId);
+        if (spec && this.isWriterAgent(spec)) {
+          const agentState = this.fsm.getSnapshot().agents[agentId];
+          if (agentState?.status === 'done') {
+            writerAgentIds.push(agentId);
+          } else {
+            log.warn(TAG, `Skipping merge for agent "${agentId}" (status=${agentState?.status ?? 'unknown'})`);
+          }
+        }
+      }
+    }
+
+    if (writerAgentIds.length === 0) {
+      log.warn(TAG, 'No writer agents to merge');
+    }
+
+    for (const agentId of writerAgentIds) {
+      log.info(TAG, `Merging agent "${agentId}" with strategy: ${strategy}`);
+      try {
+        await this.worktreeManager.mergeWorktree(agentId, this.sessionConfig.id, strategy);
+        log.info(TAG, `Merge completed for agent "${agentId}"`);
+      } catch (err) {
+        log.error(TAG, `Merge failed for agent "${agentId}"`, err);
+        throw new Error(`Merge failed for agent "${agentId}": ${err instanceof Error ? err.message : String(err)}`);
+      }
+    }
+
+    for (const spec of architecture.agents) {
+      try {
+        await this.worktreeManager.removeWorktree(spec.id);
+        log.debug(TAG, `Worktree cleaned up for ${spec.id}`);
+      } catch (err) {
+        log.warn(TAG, `Failed to clean up worktree for ${spec.id}`, err);
+      }
+    }
+  }
+
+  private isWriterAgent(spec: AgentSpec): boolean {
+    return spec.tools.includes('write_file') || spec.tools.includes('run_command');
+  }
+
+  private resolveGateForGroup(groupIdx: number, totalGroups: number, architecture: AgentArchitecture): GateLevel {
+    if (architecture.gateAfterGroup) {
+      const explicit = architecture.gateAfterGroup[groupIdx];
+      if (explicit) return explicit;
+    }
+
+    if (groupIdx === totalGroups - 1) {
+      return this.sessionConfig?.gates.afterReview ?? 'required';
+    }
+
+    return 'optional';
+  }
+
+  private getAgentTimeoutMs(): number {
+    if (!this.sessionConfig) return DEFAULT_TIMEOUT_MS;
+    const configs = Object.values(this.sessionConfig.agents);
+    if (configs.length === 0) return DEFAULT_TIMEOUT_MS;
+    const maxTimeout = Math.max(...configs.map((c) => c.timeoutMinutes));
+    return maxTimeout * 60 * 1000;
+  }
+
+  private async computeCombinedDiffStats(
+    agentIds: string[],
+  ): Promise<{ filesChanged: number; linesAdded: number; linesRemoved: number }> {
+    let totalFiles = 0;
+    let totalAdded = 0;
+    let totalRemoved = 0;
+    for (const agentId of agentIds) {
+      const stats = await this.computeDiffStats(agentId);
+      totalFiles += stats.filesChanged;
+      totalAdded += stats.linesAdded;
+      totalRemoved += stats.linesRemoved;
+    }
+    return { filesChanged: totalFiles, linesAdded: totalAdded, linesRemoved: totalRemoved };
+  }
+
+  private resolveToolsForSpec(spec: AgentSpec): ToolDefinition[] {
+    const resolved: ToolDefinition[] = [];
+    for (const name of spec.tools) {
+      const tool = CANONICAL_TOOL_MAP.get(name);
+      if (tool) {
+        resolved.push(tool);
+      } else {
+        log.warn(TAG, `Agent "${spec.id}" requests unknown tool "${name}" — skipping`);
+      }
+    }
+    if (resolved.length === 0) {
+      log.warn(TAG, `Agent "${spec.id}" has no resolved tools, giving read-only defaults`);
+      const readFile = CANONICAL_TOOL_MAP.get('read_file');
+      const listFiles = CANONICAL_TOOL_MAP.get('list_files');
+      if (readFile) resolved.push(readFile);
+      if (listFiles) resolved.push(listFiles);
+    }
+    return resolved;
   }
 
   private emitTimelineEvent(
